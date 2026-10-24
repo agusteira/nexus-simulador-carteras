@@ -1,0 +1,626 @@
+{
+  "proposito": "Casos ficticios para revisión docente o de asesor. No constituyen validación financiera.",
+  "aprobacion_experta": {
+    "estado": "pendiente",
+    "revisor": null,
+    "fecha": null
+  },
+  "casos": [
+    {
+      "id": "C01",
+      "descripcion": "Conservador, sin alertas",
+      "datos": {
+        "capital": 100000.0,
+        "moneda": "ARS",
+        "horizonte": 24,
+        "objetivo": "Preservacion",
+        "tolerancia": 0,
+        "liquidez": 20
+      },
+      "mercado": {
+        "inflacion_alta": false,
+        "presion_cambiaria": false,
+        "volatilidad_alta": false,
+        "mercado_actualizado": true
+      },
+      "expected": {
+        "resultado": {
+          "estado": "RECOMENDACION_EXITOSA",
+          "moneda": "ARS",
+          "capital": 100000.0,
+          "perfil_riesgo": "CONSERVADOR",
+          "regimen_mercado": "ESTABLE",
+          "objetivo": "Preservacion",
+          "horizonte_meses": 24,
+          "cartera_porcentual": {
+            "Renta fija inflación": 60,
+            "Renta fija cambiaria": 20,
+            "Renta variable": 0,
+            "Liquidez inmediata": 20
+          },
+          "montos_estimados": {
+            "Renta fija inflación": 60000.0,
+            "Renta fija cambiaria": 20000.0,
+            "Renta variable": 0.0,
+            "Liquidez inmediata": 20000.0
+          },
+          "instrumentos": [],
+          "auditoria": [
+            {
+              "regla": "R_PERFIL_01",
+              "resultado": "CONSERVADOR",
+              "motivo": "La tolerancia declarada a pérdidas es nula."
+            },
+            {
+              "regla": "R_MERCADO_04",
+              "resultado": "ESTABLE",
+              "motivo": "No se marcaron alertas en los indicadores de esta demo."
+            }
+          ],
+          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado."
+        },
+        "auditoria": [
+          {
+            "regla": "R_PERFIL_01",
+            "resultado": "CONSERVADOR",
+            "motivo": "La tolerancia declarada a pérdidas es nula."
+          },
+          {
+            "regla": "R_MERCADO_04",
+            "resultado": "ESTABLE",
+            "motivo": "No se marcaron alertas en los indicadores de esta demo."
+          }
+        ],
+        "errores": []
+      }
+    },
+    {
+      "id": "C02",
+      "descripcion": "Conservador, inflación elevada",
+      "datos": {
+        "capital": 100000.0,
+        "moneda": "ARS",
+        "horizonte": 24,
+        "objetivo": "Preservacion",
+        "tolerancia": 0,
+        "liquidez": 20
+      },
+      "mercado": {
+        "inflacion_alta": true,
+        "presion_cambiaria": false,
+        "volatilidad_alta": false,
+        "mercado_actualizado": true
+      },
+      "expected": {
+        "resultado": {
+          "estado": "RECOMENDACION_EXITOSA",
+          "moneda": "ARS",
+          "capital": 100000.0,
+          "perfil_riesgo": "CONSERVADOR",
+          "regimen_mercado": "INFLACION_ALTA",
+          "objetivo": "Preservacion",
+          "horizonte_meses": 24,
+          "cartera_porcentual": {
+            "Renta fija inflación": 70,
+            "Renta fija cambiaria": 10,
+            "Renta variable": 0,
+            "Liquidez inmediata": 20
+          },
+          "montos_estimados": {
+            "Renta fija inflación": 70000.0,
+            "Renta fija cambiaria": 10000.0,
+            "Renta variable": 0.0,
+            "Liquidez inmediata": 20000.0
+          },
+          "instrumentos": [],
+          "auditoria": [
+            {
+              "regla": "R_PERFIL_01",
+              "resultado": "CONSERVADOR",
+              "motivo": "La tolerancia declarada a pérdidas es nula."
+            },
+            {
+              "regla": "R_MERCADO_01",
+              "resultado": "INFLACION_ALTA",
+              "motivo": "Se identificó un escenario marcado por inflación elevada."
+            }
+          ],
+          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado."
+        },
+        "auditoria": [
+          {
+            "regla": "R_PERFIL_01",
+            "resultado": "CONSERVADOR",
+            "motivo": "La tolerancia declarada a pérdidas es nula."
+          },
+          {
+            "regla": "R_MERCADO_01",
+            "resultado": "INFLACION_ALTA",
+            "motivo": "Se identificó un escenario marcado por inflación elevada."
+          }
+        ],
+        "errores": []
+      }
+    },
+    {
+      "id": "C03",
+      "descripcion": "Moderado, sin alertas",
+      "datos": {
+        "capital": 100000.0,
+        "moneda": "ARS",
+        "horizonte": 24,
+        "objetivo": "Preservacion",
+        "tolerancia": 10,
+        "liquidez": 20
+      },
+      "mercado": {
+        "inflacion_alta": false,
+        "presion_cambiaria": false,
+        "volatilidad_alta": false,
+        "mercado_actualizado": true
+      },
+      "expected": {
+        "resultado": {
+          "estado": "RECOMENDACION_EXITOSA",
+          "moneda": "ARS",
+          "capital": 100000.0,
+          "perfil_riesgo": "MODERADO",
+          "regimen_mercado": "ESTABLE",
+          "objetivo": "Preservacion",
+          "horizonte_meses": 24,
+          "cartera_porcentual": {
+            "Renta fija inflación": 40,
+            "Renta fija cambiaria": 20,
+            "Renta variable": 20,
+            "Liquidez inmediata": 20
+          },
+          "montos_estimados": {
+            "Renta fija inflación": 40000.0,
+            "Renta fija cambiaria": 20000.0,
+            "Renta variable": 20000.0,
+            "Liquidez inmediata": 20000.0
+          },
+          "instrumentos": [],
+          "auditoria": [
+            {
+              "regla": "R_PERFIL_02",
+              "resultado": "MODERADO",
+              "motivo": "La pérdida temporal tolerada se encuentra entre 1% y 10%."
+            },
+            {
+              "regla": "R_MERCADO_04",
+              "resultado": "ESTABLE",
+              "motivo": "No se marcaron alertas en los indicadores de esta demo."
+            }
+          ],
+          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado."
+        },
+        "auditoria": [
+          {
+            "regla": "R_PERFIL_02",
+            "resultado": "MODERADO",
+            "motivo": "La pérdida temporal tolerada se encuentra entre 1% y 10%."
+          },
+          {
+            "regla": "R_MERCADO_04",
+            "resultado": "ESTABLE",
+            "motivo": "No se marcaron alertas en los indicadores de esta demo."
+          }
+        ],
+        "errores": []
+      }
+    },
+    {
+      "id": "C04",
+      "descripcion": "Moderado, inflación elevada",
+      "datos": {
+        "capital": 100000.0,
+        "moneda": "ARS",
+        "horizonte": 24,
+        "objetivo": "Preservacion",
+        "tolerancia": 10,
+        "liquidez": 20
+      },
+      "mercado": {
+        "inflacion_alta": true,
+        "presion_cambiaria": false,
+        "volatilidad_alta": false,
+        "mercado_actualizado": true
+      },
+      "expected": {
+        "resultado": {
+          "estado": "RECOMENDACION_EXITOSA",
+          "moneda": "ARS",
+          "capital": 100000.0,
+          "perfil_riesgo": "MODERADO",
+          "regimen_mercado": "INFLACION_ALTA",
+          "objetivo": "Preservacion",
+          "horizonte_meses": 24,
+          "cartera_porcentual": {
+            "Renta fija inflación": 50,
+            "Renta fija cambiaria": 20,
+            "Renta variable": 10,
+            "Liquidez inmediata": 20
+          },
+          "montos_estimados": {
+            "Renta fija inflación": 50000.0,
+            "Renta fija cambiaria": 20000.0,
+            "Renta variable": 10000.0,
+            "Liquidez inmediata": 20000.0
+          },
+          "instrumentos": [],
+          "auditoria": [
+            {
+              "regla": "R_PERFIL_02",
+              "resultado": "MODERADO",
+              "motivo": "La pérdida temporal tolerada se encuentra entre 1% y 10%."
+            },
+            {
+              "regla": "R_MERCADO_01",
+              "resultado": "INFLACION_ALTA",
+              "motivo": "Se identificó un escenario marcado por inflación elevada."
+            }
+          ],
+          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado."
+        },
+        "auditoria": [
+          {
+            "regla": "R_PERFIL_02",
+            "resultado": "MODERADO",
+            "motivo": "La pérdida temporal tolerada se encuentra entre 1% y 10%."
+          },
+          {
+            "regla": "R_MERCADO_01",
+            "resultado": "INFLACION_ALTA",
+            "motivo": "Se identificó un escenario marcado por inflación elevada."
+          }
+        ],
+        "errores": []
+      }
+    },
+    {
+      "id": "C05",
+      "descripcion": "Agresivo, sin alertas",
+      "datos": {
+        "capital": 100000.0,
+        "moneda": "ARS",
+        "horizonte": 24,
+        "objetivo": "Preservacion",
+        "tolerancia": 20,
+        "liquidez": 20
+      },
+      "mercado": {
+        "inflacion_alta": false,
+        "presion_cambiaria": false,
+        "volatilidad_alta": false,
+        "mercado_actualizado": true
+      },
+      "expected": {
+        "resultado": {
+          "estado": "RECOMENDACION_EXITOSA",
+          "moneda": "ARS",
+          "capital": 100000.0,
+          "perfil_riesgo": "AGRESIVO",
+          "regimen_mercado": "ESTABLE",
+          "objetivo": "Preservacion",
+          "horizonte_meses": 24,
+          "cartera_porcentual": {
+            "Renta fija inflación": 20,
+            "Renta fija cambiaria": 15,
+            "Renta variable": 45,
+            "Liquidez inmediata": 20
+          },
+          "montos_estimados": {
+            "Renta fija inflación": 20000.0,
+            "Renta fija cambiaria": 15000.0,
+            "Renta variable": 45000.0,
+            "Liquidez inmediata": 20000.0
+          },
+          "instrumentos": [],
+          "auditoria": [
+            {
+              "regla": "R_MERCADO_04",
+              "resultado": "ESTABLE",
+              "motivo": "No se marcaron alertas en los indicadores de esta demo."
+            },
+            {
+              "regla": "R_PERFIL_03",
+              "resultado": "AGRESIVO",
+              "motivo": "La tolerancia declarada a pérdidas es superior al 10%."
+            }
+          ],
+          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado."
+        },
+        "auditoria": [
+          {
+            "regla": "R_MERCADO_04",
+            "resultado": "ESTABLE",
+            "motivo": "No se marcaron alertas en los indicadores de esta demo."
+          },
+          {
+            "regla": "R_PERFIL_03",
+            "resultado": "AGRESIVO",
+            "motivo": "La tolerancia declarada a pérdidas es superior al 10%."
+          }
+        ],
+        "errores": []
+      }
+    },
+    {
+      "id": "C06",
+      "descripcion": "Agresivo, inflación elevada",
+      "datos": {
+        "capital": 100000.0,
+        "moneda": "ARS",
+        "horizonte": 24,
+        "objetivo": "Preservacion",
+        "tolerancia": 20,
+        "liquidez": 20
+      },
+      "mercado": {
+        "inflacion_alta": true,
+        "presion_cambiaria": false,
+        "volatilidad_alta": false,
+        "mercado_actualizado": true
+      },
+      "expected": {
+        "resultado": {
+          "estado": "RECOMENDACION_EXITOSA",
+          "moneda": "ARS",
+          "capital": 100000.0,
+          "perfil_riesgo": "AGRESIVO",
+          "regimen_mercado": "INFLACION_ALTA",
+          "objetivo": "Preservacion",
+          "horizonte_meses": 24,
+          "cartera_porcentual": {
+            "Renta fija inflación": 30,
+            "Renta fija cambiaria": 15,
+            "Renta variable": 35,
+            "Liquidez inmediata": 20
+          },
+          "montos_estimados": {
+            "Renta fija inflación": 30000.0,
+            "Renta fija cambiaria": 15000.0,
+            "Renta variable": 35000.0,
+            "Liquidez inmediata": 20000.0
+          },
+          "instrumentos": [],
+          "auditoria": [
+            {
+              "regla": "R_MERCADO_01",
+              "resultado": "INFLACION_ALTA",
+              "motivo": "Se identificó un escenario marcado por inflación elevada."
+            },
+            {
+              "regla": "R_PERFIL_03",
+              "resultado": "AGRESIVO",
+              "motivo": "La tolerancia declarada a pérdidas es superior al 10%."
+            }
+          ],
+          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado."
+        },
+        "auditoria": [
+          {
+            "regla": "R_MERCADO_01",
+            "resultado": "INFLACION_ALTA",
+            "motivo": "Se identificó un escenario marcado por inflación elevada."
+          },
+          {
+            "regla": "R_PERFIL_03",
+            "resultado": "AGRESIVO",
+            "motivo": "La tolerancia declarada a pérdidas es superior al 10%."
+          }
+        ],
+        "errores": []
+      }
+    },
+    {
+      "id": "C07",
+      "descripcion": "Agresivo, volatilidad elevada",
+      "datos": {
+        "capital": 100000.0,
+        "moneda": "ARS",
+        "horizonte": 24,
+        "objetivo": "Preservacion",
+        "tolerancia": 20,
+        "liquidez": 20
+      },
+      "mercado": {
+        "inflacion_alta": false,
+        "presion_cambiaria": false,
+        "volatilidad_alta": true,
+        "mercado_actualizado": true
+      },
+      "expected": {
+        "resultado": {
+          "estado": "RECOMENDACION_EXITOSA",
+          "moneda": "ARS",
+          "capital": 100000.0,
+          "perfil_riesgo": "AGRESIVO",
+          "regimen_mercado": "VOLATILIDAD_ALTA",
+          "objetivo": "Preservacion",
+          "horizonte_meses": 24,
+          "cartera_porcentual": {
+            "Renta fija inflación": 20,
+            "Renta fija cambiaria": 15,
+            "Renta variable": 0,
+            "Liquidez inmediata": 65
+          },
+          "montos_estimados": {
+            "Renta fija inflación": 20000.0,
+            "Renta fija cambiaria": 15000.0,
+            "Renta variable": 0.0,
+            "Liquidez inmediata": 65000.0
+          },
+          "instrumentos": [],
+          "auditoria": [
+            {
+              "regla": "R_MERCADO_03",
+              "resultado": "VOLATILIDAD_ALTA",
+              "motivo": "Se prioriza la cautela ante la volatilidad marcada."
+            },
+            {
+              "regla": "R_PERFIL_03",
+              "resultado": "AGRESIVO",
+              "motivo": "La tolerancia declarada a pérdidas es superior al 10%."
+            }
+          ],
+          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado."
+        },
+        "auditoria": [
+          {
+            "regla": "R_MERCADO_03",
+            "resultado": "VOLATILIDAD_ALTA",
+            "motivo": "Se prioriza la cautela ante la volatilidad marcada."
+          },
+          {
+            "regla": "R_PERFIL_03",
+            "resultado": "AGRESIVO",
+            "motivo": "La tolerancia declarada a pérdidas es superior al 10%."
+          }
+        ],
+        "errores": []
+      }
+    },
+    {
+      "id": "C08",
+      "descripcion": "Agresivo, liquidez mínima del 100%",
+      "datos": {
+        "capital": 100000.0,
+        "moneda": "ARS",
+        "horizonte": 24,
+        "objetivo": "Preservacion",
+        "tolerancia": 20,
+        "liquidez": 100
+      },
+      "mercado": {
+        "inflacion_alta": false,
+        "presion_cambiaria": false,
+        "volatilidad_alta": false,
+        "mercado_actualizado": true
+      },
+      "expected": {
+        "resultado": {
+          "estado": "RECOMENDACION_EXITOSA",
+          "moneda": "ARS",
+          "capital": 100000.0,
+          "perfil_riesgo": "AGRESIVO",
+          "regimen_mercado": "ESTABLE",
+          "objetivo": "Preservacion",
+          "horizonte_meses": 24,
+          "cartera_porcentual": {
+            "Renta fija inflación": 0,
+            "Renta fija cambiaria": 0,
+            "Renta variable": 0,
+            "Liquidez inmediata": 100
+          },
+          "montos_estimados": {
+            "Renta fija inflación": 0.0,
+            "Renta fija cambiaria": 0.0,
+            "Renta variable": 0.0,
+            "Liquidez inmediata": 100000.0
+          },
+          "instrumentos": [],
+          "auditoria": [
+            {
+              "regla": "R_MERCADO_04",
+              "resultado": "ESTABLE",
+              "motivo": "No se marcaron alertas en los indicadores de esta demo."
+            },
+            {
+              "regla": "R_PERFIL_03",
+              "resultado": "AGRESIVO",
+              "motivo": "La tolerancia declarada a pérdidas es superior al 10%."
+            }
+          ],
+          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado."
+        },
+        "auditoria": [
+          {
+            "regla": "R_MERCADO_04",
+            "resultado": "ESTABLE",
+            "motivo": "No se marcaron alertas en los indicadores de esta demo."
+          },
+          {
+            "regla": "R_PERFIL_03",
+            "resultado": "AGRESIVO",
+            "motivo": "La tolerancia declarada a pérdidas es superior al 10%."
+          }
+        ],
+        "errores": []
+      }
+    },
+    {
+      "id": "C09",
+      "descripcion": "Tolerancia nula y objetivo Crecimiento",
+      "datos": {
+        "capital": 100000.0,
+        "moneda": "ARS",
+        "horizonte": 24,
+        "objetivo": "Crecimiento",
+        "tolerancia": 0,
+        "liquidez": 20
+      },
+      "mercado": {
+        "inflacion_alta": false,
+        "presion_cambiaria": false,
+        "volatilidad_alta": false,
+        "mercado_actualizado": true
+      },
+      "expected": {
+        "resultado": {
+          "estado": "DERIVADO_ASESOR_MANUAL",
+          "errores": [
+            {
+              "codigo": "ERR_INCONSISTENCIA_PERFIL_HORIZONTE",
+              "mensaje": "Tolerancia nula a pérdidas y objetivo de crecimiento requieren revisión manual."
+            }
+          ]
+        },
+        "auditoria": [],
+        "errores": [
+          [
+            "ERR_INCONSISTENCIA_PERFIL_HORIZONTE",
+            "Tolerancia nula a pérdidas y objetivo de crecimiento requieren revisión manual."
+          ]
+        ]
+      }
+    },
+    {
+      "id": "C10",
+      "descripcion": "Escenario sin confirmar",
+      "datos": {
+        "capital": 100000.0,
+        "moneda": "ARS",
+        "horizonte": 24,
+        "objetivo": "Preservacion",
+        "tolerancia": 10,
+        "liquidez": 20
+      },
+      "mercado": {
+        "inflacion_alta": false,
+        "presion_cambiaria": false,
+        "volatilidad_alta": false,
+        "mercado_actualizado": false
+      },
+      "expected": {
+        "resultado": {
+          "estado": "DERIVADO_ASESOR_MANUAL",
+          "errores": [
+            {
+              "codigo": "ERR_DATOS_MERCADO_NO_DISPONIBLES",
+              "mensaje": "Confirmá que los datos del escenario sean vigentes antes de ejecutar."
+            }
+          ]
+        },
+        "auditoria": [],
+        "errores": [
+          [
+            "ERR_DATOS_MERCADO_NO_DISPONIBLES",
+            "Confirmá que los datos del escenario sean vigentes antes de ejecutar."
+          ]
+        ]
+      }
+    }
+  ]
+}

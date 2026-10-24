@@ -1,0 +1,10 @@
+:host { color-scheme:dark; }
+.money-field { font-family:"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif; color:#edf2fa; }
+label { display:block; font-size:14px; line-height:1.5; margin-bottom:7px; }
+input { box-sizing:border-box; width:100%; min-height:44px; padding:10px 12px; border:1px solid #66738b; border-radius:10px; background:#101622; color:#edf2fa; font:400 16px/1.5 "DM Sans",system-ui,sans-serif; font-variant-numeric:tabular-nums; }
+input:hover { border-color:#a78bfa; }
+input:focus-visible { outline:3px solid #67e8f9; outline-offset:3px; }
+input[aria-invalid="true"] { border-color:#fda4af; }
+#money-help { color:#b2bfd2; font-size:12px; line-height:1.5; margin-top:7px; }
+#money-error { color:#fda4af; font-size:13px; line-height:1.5; margin-top:5px; }
+#money-error:empty { display:none; }
