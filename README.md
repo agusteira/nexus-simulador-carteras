@@ -18,10 +18,14 @@ El código está organizado por responsabilidad para mantener separadas la inter
 nexus-simulador-carteras/
 ├── app.py
 ├── .streamlit/config.toml  # Tema nativo oscuro
+├── config/matriz_decision.json  # Matriz de decisión inicial (versión 1)
+├── data/                   # Generada en ejecución: historial.db y versiones (no versionar)
 ├── docs/                   # Alcance y casos del brief
 ├── tests/                  # Regresiones del flujo y motor
 ├── nexus/
 │   ├── engine.py       # Hechos y reglas de Experta
+│   ├── matrices.py     # RF-08: carga, validación y versionado de la matriz
+│   ├── history.py      # RF-09: historial de evaluaciones en SQLite
 │   ├── portfolio.py    # Reglas de asignación de cartera
 │   ├── service.py      # Evaluación completa, independiente de Streamlit
 │   ├── state.py        # Inicialización del estado de sesión
@@ -29,7 +33,7 @@ nexus-simulador-carteras/
 │   ├── ui/
 │   │   ├── common.py   # Componentes comunes
 │   │   └── styles.css  # Estilos de la aplicación
-│   └── views/          # Inicio, Perfil, Escenario, Revisión, Resultado y Auditoría
+│   └── views/          # Inicio, Perfil, Escenario, Revisión, Resultado, Auditoría, Historial y Administración
 └── README.md
 ```
 
@@ -145,7 +149,7 @@ Los módulos `json`, `datetime` y `pathlib` pertenecen a la biblioteca estándar
 - El catálogo externo puede estar incompleto o no disponible; no hay cotizaciones en tiempo real ni elegibilidad financiera completa.
 - El escenario de mercado se ingresa manualmente.
 - Las asignaciones son ilustrativas y se basan en reglas determinísticas definidas en el código.
-- La aplicación conserva datos en la sesión de Streamlit; no implementa una base de datos para guardar perfiles permanentemente.
+- El historial (SQLite) y las versiones de la matriz se guardan en `data/`, en el disco del servidor. En Streamlit Community Cloud ese disco es efímero: se pierde al reiniciar o redesplegar la app.
 - El prototipo no debe utilizarse como asesoramiento financiero real.
 
 ## 10. Solución de problemas
@@ -203,3 +207,18 @@ Sólo aparecen categorías con asignación positiva. La clasificación y ambas m
 Se eligen hasta dos fondos diferentes por categoría en orden alfabético, priorizando A3500 en las alternativas cambiarias. No se ordena por rendimiento. La unidad de cuotaparte no está normalizada por NEXUS: su valor se identifica como reportado por la fuente y no se calculan cantidades a comprar.
 
 La consulta queda dentro de `resultado_robo.ejemplos_instrumentos`, con hash de la ejecución, copia de las entradas originales, fechas, fuente, moneda, criterios y limitaciones. Resultado, auditoría y JSON conservan esa misma consulta aunque se edite el perfil. Una nueva evaluación genera otra consulta; actualizar los ejemplos no vuelve a ejecutar las reglas ni cambia sus porcentajes. La persistencia sigue limitada a la sesión.
+
+
+## 13. Matrices de decisión configurables (RF-08)
+
+Los umbrales de perfil, las carteras base, los topes por clase de activo, las reglas de ajuste por escenario y su prioridad se leen en cada evaluación desde la versión activa de la matriz. La versión 1 es `config/matriz_decision.json` y reproduce exactamente las reglas originales.
+
+Desde el menú lateral, **Más opciones → Administración de matrices**, se editan los valores, se indica responsable y motivo y se guarda una **versión nueva** (no se sobrescriben las anteriores). La tabla de historial muestra número, fecha, responsable y nota; cualquier versión anterior se puede ver en JSON y **restaurar**, lo que crea otra versión nueva con su contenido. Las versiones se guardan en `data/matrices_versiones.json`. Cada resultado incluye `version_matriz`.
+
+Si se define la variable de entorno o el secreto `NEXUS_ADMIN_CLAVE`, la pantalla pide esa clave; sin ella funciona en modo demo. Las categorías de activos son fijas porque los ejemplos de instrumentos dependen de ellas. El orden de retiro para cubrir la liquidez mínima (`orden_retiro_liquidez`) sólo se edita en el JSON.
+
+## 14. Historial de evaluaciones (RF-09)
+
+El perfil tiene un **identificador de usuario** opcional (vacío = `anonimo`). Cada evaluación ejecutada se guarda en `data/historial.db` (SQLite) con entradas, escenario, resultado, asignación, traza, errores, versión de la matriz y fecha.
+
+En **Más opciones → Historial de evaluaciones** se filtra por usuario (sin distinguir mayúsculas) y rango de fechas, se abre el detalle completo con su traza y su JSON descargable, y se comparan dos evaluaciones lado a lado con las diferencias por categoría. La variable `NEXUS_DATA_DIR` permite cambiar la carpeta de datos; las pruebas la usan para no tocar `data/`.

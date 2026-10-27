@@ -2,6 +2,8 @@
 
 from pathlib import Path
 import json
+import os
+import tempfile
 import unittest
 from unittest.mock import patch
 from datetime import datetime, timezone
@@ -14,6 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class UserFlowTest(unittest.TestCase):
     def setUp(self):
+        directorio = tempfile.TemporaryDirectory()
+        self.addCleanup(directorio.cleanup)
+        self.data_dir = directorio.name
+        entorno = patch.dict(os.environ, {"NEXUS_DATA_DIR": self.data_dir})
+        entorno.start()
+        self.addCleanup(entorno.stop)
         today = datetime.now(timezone.utc).date().isoformat()
         self.public_source = patch("nexus.instruments.ArgentinaDatosClient.fund_catalog", return_value={
             "fondos": [{"nombre": "Fondo offline de prueba", "fondoId": "1", "claseId": "1", "fecha": today,
@@ -290,6 +298,57 @@ class UserFlowTest(unittest.TestCase):
         result = self.app.session_state["resultado_robo"]
         self.assertEqual(result["regimen_mercado"], "VOLATILIDAD_ALTA")
         self.assertEqual(result["cartera_porcentual"]["Renta variable"], 0)
+
+
+    def test_evaluations_are_persisted_and_listed_in_history(self):
+        from nexus import history
+
+        self.navigate("perfil")
+        self.app.text_input(key="perfil_usuario").input("ana").run()
+        self.fill_profile(tolerance=0)
+        self.evaluate()
+        self.fill_profile(tolerance=30, objective="Crecimiento")
+        self.evaluate()
+        filas = history.consultar_historial("ana")
+        self.assertEqual(len(filas), 2)
+        self.assertEqual({f["perfil_riesgo"] for f in filas}, {"CONSERVADOR", "AGRESIVO"})
+        self.assertEqual(self.app.session_state["historial_id"], filas[0]["id"])
+        registro = history.obtener_evaluacion(filas[0]["id"])
+        self.assertEqual(registro["resultado"]["version_matriz"], 1)
+        self.assertTrue(registro["auditoria"])
+        self.assertTrue(os.path.exists(os.path.join(self.data_dir, "historial.db")))
+
+        self.navigate("historial")
+        self.assertEqual(self.app.text_input(key="historial_usuario").value, "ana")
+        self.assertTrue(self.app.dataframe)
+        self.assertTrue(any("Comparación" in m.value for m in self.app.markdown))
+        self.assertTrue(self.app.get("download_button"))
+        self.app.text_input(key="historial_usuario").input("nadie").run()
+        self.assert_clean()
+        self.assertTrue(any("No hay evaluaciones" in i.value for i in self.app.info))
+
+    def test_admin_saves_new_version_used_by_next_evaluation(self):
+        self.navigate("administracion")
+        self.assertTrue(any("v1" in i.value for i in self.app.info))
+        self.app.number_input(key="adm_v1_umb_m").set_value(25)
+        self.app.text_input(key="adm_v1_autor").input("docente")
+        self.app.text_input(key="adm_v1_nota").input("Umbral moderado más amplio")
+        self.click("Guardar como nueva versión")
+        self.assertTrue(any("versión 2" in m.value for m in self.app.success))
+        self.assertTrue(any("v2" in i.value for i in self.app.info))
+        self.fill_profile(tolerance=20, objective="Crecimiento")
+        self.evaluate()
+        resultado = self.app.session_state["resultado_robo"]
+        self.assertEqual(resultado["version_matriz"], 2)
+        self.assertEqual(resultado["perfil_riesgo"], "MODERADO")
+
+    def test_admin_rejects_invalid_matrix(self):
+        self.navigate("administracion")
+        self.app.number_input(key="adm_v1_base_MODERADO_Renta variable").set_value(50)
+        self.app.text_input(key="adm_v1_autor").input("docente")
+        self.click("Guardar como nueva versión")
+        self.assertTrue(any("100" in e.value for e in self.app.error))
+        self.assertTrue(any("v1" in i.value for i in self.app.info))
 
 
 if __name__ == "__main__":

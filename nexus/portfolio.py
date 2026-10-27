@@ -1,50 +1,32 @@
-def construir_cartera(perfil, regimen, liquidez_minima):
-    bases = {
-        "CONSERVADOR": {
-            "Renta fija inflación": 60,
-            "Renta fija cambiaria": 20,
-            "Renta variable": 0,
-            "Liquidez inmediata": 20,
-        },
-        "MODERADO": {
-            "Renta fija inflación": 40,
-            "Renta fija cambiaria": 20,
-            "Renta variable": 20,
-            "Liquidez inmediata": 20,
-        },
-        "AGRESIVO": {
-            "Renta fija inflación": 20,
-            "Renta fija cambiaria": 15,
-            "Renta variable": 45,
-            "Liquidez inmediata": 20,
-        },
-    }
-    cartera = bases[perfil].copy()
+from .matrices import version_activa
 
-    if regimen == "INFLACION_ALTA":
-        mover = min(10, cartera["Liquidez inmediata"])
-        cartera["Liquidez inmediata"] -= mover
-        cartera["Renta fija inflación"] += mover
-    elif regimen == "PRESION_CAMBIARIA":
-        mover = min(10, cartera["Liquidez inmediata"])
-        cartera["Liquidez inmediata"] -= mover
-        cartera["Renta fija cambiaria"] += mover
-    elif regimen == "VOLATILIDAD_ALTA":
-        mover = cartera["Renta variable"]
-        cartera["Renta variable"] = 0
-        cartera["Liquidez inmediata"] += mover
+
+def construir_cartera(perfil, regimen, liquidez_minima, matriz=None):
+    """Arma la cartera con la matriz indicada o, si no se pasa, la versión activa (RF-08)."""
+    if matriz is None:
+        _, matriz = version_activa()
+    cartera = dict(matriz["carteras_base"][perfil])
+
+    ajuste = matriz["ajustes_regimen"].get(regimen)
+    if ajuste and ajuste.get("activo", True):
+        mover = min(ajuste["puntos"], cartera[ajuste["desde"]])
+        cartera[ajuste["desde"]] -= mover
+        cartera[ajuste["hacia"]] += mover
+
+    # Topes por clase de activo: el excedente pasa a liquidez inmediata.
+    for categoria, tope in matriz.get("topes_clase", {}).get(perfil, {}).items():
+        excedente = max(0, cartera[categoria] - tope)
+        cartera[categoria] -= excedente
+        cartera["Liquidez inmediata"] += excedente
 
     faltante = max(0, liquidez_minima - cartera["Liquidez inmediata"])
-    for categoria in ("Renta variable", "Renta fija cambiaria", "Renta fija inflación"):
+    for categoria in matriz["orden_retiro_liquidez"]:
         retiro = min(cartera[categoria], faltante)
         cartera[categoria] -= retiro
         cartera["Liquidez inmediata"] += retiro
         faltante -= retiro
         if faltante == 0:
             break
-
-    if perfil == "CONSERVADOR":
-        cartera["Renta variable"] = 0
 
     if any(not isinstance(valor, int) or valor < 0 for valor in cartera.values()):
         raise ValueError("La asignación contiene valores inválidos.")

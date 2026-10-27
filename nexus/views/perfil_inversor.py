@@ -6,6 +6,7 @@ from ..ui.money_input import money_input
 
 
 PROFILE_FIELDS = {
+    "usuario_id": ("perfil_usuario", ""),
     "capital": ("perfil_capital", None),
     "moneda": ("perfil_moneda", "ARS"),
     "horizonte": ("perfil_horizonte", 24),
@@ -84,6 +85,14 @@ def render():
     left, right = st.columns(2)
     with left, st.container(border=True):
         st.markdown("## Tu punto de partida")
+        st.text_input(
+            "Identificador de usuario (opcional)",
+            key="perfil_usuario",
+            max_chars=64,
+            on_change=_sync_draft,
+            placeholder="Ej.: DNI, legajo o alias",
+            help="Se guarda junto con cada evaluación para consultarla después en el Historial.",
+        )
         capital = money_input(
             "¿Con cuánto querés simular?",
             key="perfil_capital",
