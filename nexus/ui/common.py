@@ -112,6 +112,20 @@ def render_sidebar():
                 on_click=set_step,
                 args=("auditoria",),
             )
+            st.button(
+                "Historial de evaluaciones",
+                key="nav_historial",
+                width="stretch",
+                on_click=set_step,
+                args=("historial",),
+            )
+            st.button(
+                "Administración de matrices",
+                key="nav_administracion",
+                width="stretch",
+                on_click=set_step,
+                args=("administracion",),
+            )
     return paso_actual
 
 

@@ -1,6 +1,7 @@
 import streamlit as st
 
 PASOS = ("inicio", "perfil", "escenario", "revision", "resultado")
+VISTAS_EXTRA = ("auditoria", "historial", "administracion")
 
 
 def initialize_session():
@@ -20,7 +21,7 @@ def initialize_session():
 
 
 def set_step(step):
-    if step in PASOS or step == "auditoria":
+    if step in PASOS or step in VISTAS_EXTRA:
         st.session_state.paso_actual = step
 
 

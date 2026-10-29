@@ -9,7 +9,16 @@ from nexus.ui.common import (
     render_sidebar,
     render_step_indicator,
 )
-from nexus.views import auditoria, mercado, perfil_inversor, resultado, revision, resumen
+from nexus.views import (
+    administracion,
+    auditoria,
+    historial,
+    mercado,
+    perfil_inversor,
+    resultado,
+    revision,
+    resumen,
+)
 
 
 st.set_page_config(
@@ -34,6 +43,8 @@ vistas = {
     "revision": revision.render,
     "resultado": resultado.render,
     "auditoria": auditoria.render,
+    "historial": historial.render,
+    "administracion": administracion.render,
 }
 vistas[pagina]()
 render_footer()

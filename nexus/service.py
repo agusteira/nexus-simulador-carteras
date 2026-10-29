@@ -1,12 +1,14 @@
 from datetime import datetime
 
 from .engine import Inversor, Mercado, MotorRoboAdvisor, Perfil, Regimen
+from .matrices import version_activa
 from .portfolio import construir_cartera
 from .validation import validar_entrada
 
 
 def evaluar(datos, mercado):
     """Devuelve la recomendación, la auditoría y los errores de validación."""
+    version_matriz, matriz = version_activa()
     errores = validar_entrada(
         datos["capital"],
         datos["horizonte"],
@@ -20,10 +22,11 @@ def evaluar(datos, mercado):
             "estado": "DERIVADO_ASESOR_MANUAL",
             "errores": [{"codigo": codigo, "mensaje": mensaje} for codigo, mensaje in errores],
             "fecha_ejecucion": datetime.now().isoformat(timespec="seconds"),
+            "version_matriz": version_matriz,
         }
         return resultado, [], errores
 
-    motor = MotorRoboAdvisor()
+    motor = MotorRoboAdvisor(matriz)
     motor.reset()
     motor.declare(
         Inversor(
@@ -54,12 +57,13 @@ def evaluar(datos, mercado):
                 "codigo": "ERR_INFERENCIA_INCOMPLETA",
                 "mensaje": "El motor no produjo todos los hechos necesarios.",
             }],
+            "version_matriz": version_matriz,
         }
         return resultado, auditoria, errores
 
     perfil, regimen = perfiles[0], regimenes[0]
     try:
-        cartera = construir_cartera(perfil, regimen, datos["liquidez"])
+        cartera = construir_cartera(perfil, regimen, datos["liquidez"], matriz)
         resultado = {
             "estado": "RECOMENDACION_EXITOSA",
             "moneda": datos["moneda"],
@@ -77,10 +81,12 @@ def evaluar(datos, mercado):
             "auditoria": auditoria,
             "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado.",
             "fecha_ejecucion": datetime.now().isoformat(timespec="seconds"),
+            "version_matriz": version_matriz,
         }
     except ValueError as exc:
         resultado = {
             "estado": "DERIVADO_ASESOR_MANUAL",
             "errores": [{"codigo": "ERR_ASIGNACION_INVIABLE", "mensaje": str(exc)}],
+            "version_matriz": version_matriz,
         }
     return resultado, auditoria, errores

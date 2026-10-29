@@ -1,5 +1,6 @@
 import streamlit as st
 
+from ..history import guardar_evaluacion, normalizar_usuario
 from ..service import evaluar
 from ..state import has_unsaved_changes, is_result_stale, save_execution, set_step
 from ..ui.common import moneda_fmt, objetivo_fmt
@@ -27,6 +28,7 @@ def render():
     left, right = st.columns(2)
     with left, st.container(border=True):
         st.markdown("## Tu perfil")
+        st.write(f"**Usuario:** {normalizar_usuario(perfil.get('usuario_id'))}")
         st.write(f"**Capital:** {moneda_fmt(perfil['capital'], perfil['moneda'])}")
         st.write(f"**Objetivo:** {objetivo_fmt(perfil['objetivo'])} · **Horizonte:** {perfil['horizonte']} meses")
         st.write(f"**Tolerancia hipotética a pérdidas:** {perfil['tolerancia']}%")
@@ -82,5 +84,9 @@ def render():
     if st.button("Ejecutar evaluación →", type="primary", width="stretch"):
         resultado, auditoria, errores = evaluar(perfil, mercado)
         save_execution(resultado, auditoria, errores)
+        try:
+            st.session_state.historial_id = guardar_evaluacion(perfil, mercado, resultado, auditoria, errores)
+        except Exception:  # el historial no debe impedir mostrar el resultado
+            st.session_state.historial_id = None
         set_step("resultado")
         st.rerun()

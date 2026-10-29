@@ -47,6 +47,9 @@ def _render_inputs(resultado, snapshot):
         + ("La consulta independiente de ejemplos de fondos y su estado quedan registrados en el JSON."
            if resultado.get("ejemplos_instrumentos") else "")
     )
+    st.write(f"**Usuario:** {perfil.get('usuario_id') or 'anonimo'}")
+    if resultado.get("version_matriz") is not None:
+        st.write(f"**Versión de la matriz de decisión:** v{resultado['version_matriz']}")
     st.caption(f"**Fecha de ejecución:** {fecha_fmt(resultado.get('fecha_ejecucion'))}")
 
 

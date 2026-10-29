@@ -1,0 +1,39 @@
+{
+  "descripcion": "Matriz de decisión inicial (versión 1). Se usa cuando todavía no se guardó ninguna versión desde Administración.",
+  "umbrales_perfil": {
+    "conservador_tolerancia_max": 0,
+    "moderado_tolerancia_max": 10
+  },
+  "carteras_base": {
+    "CONSERVADOR": {
+      "Renta fija inflación": 60,
+      "Renta fija cambiaria": 20,
+      "Renta variable": 0,
+      "Liquidez inmediata": 20
+    },
+    "MODERADO": {
+      "Renta fija inflación": 40,
+      "Renta fija cambiaria": 20,
+      "Renta variable": 20,
+      "Liquidez inmediata": 20
+    },
+    "AGRESIVO": {
+      "Renta fija inflación": 20,
+      "Renta fija cambiaria": 15,
+      "Renta variable": 45,
+      "Liquidez inmediata": 20
+    }
+  },
+  "prioridad_regimen": ["VOLATILIDAD_ALTA", "INFLACION_ALTA", "PRESION_CAMBIARIA"],
+  "ajustes_regimen": {
+    "INFLACION_ALTA": {"activo": true, "desde": "Liquidez inmediata", "hacia": "Renta fija inflación", "puntos": 10},
+    "PRESION_CAMBIARIA": {"activo": true, "desde": "Liquidez inmediata", "hacia": "Renta fija cambiaria", "puntos": 10},
+    "VOLATILIDAD_ALTA": {"activo": true, "desde": "Renta variable", "hacia": "Liquidez inmediata", "puntos": 100}
+  },
+  "topes_clase": {
+    "CONSERVADOR": {"Renta fija inflación": 100, "Renta fija cambiaria": 100, "Renta variable": 0},
+    "MODERADO": {"Renta fija inflación": 100, "Renta fija cambiaria": 100, "Renta variable": 100},
+    "AGRESIVO": {"Renta fija inflación": 100, "Renta fija cambiaria": 100, "Renta variable": 100}
+  },
+  "orden_retiro_liquidez": ["Renta variable", "Renta fija cambiaria", "Renta fija inflación"]
+}
