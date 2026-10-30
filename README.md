@@ -1,238 +1,199 @@
-# NEXUS | Simulador de carteras
+# NEXUS: cómo funciona el sistema experto
 
-Prototipo académico de un sistema experto para evaluar un perfil inversor, analizar un escenario macroeconómico ingresado manualmente y generar una distribución ilustrativa de cartera. Está construido con Python, Streamlit y Experta.
+NEXUS es un prototipo educativo que transforma un perfil y un escenario ingresados por la persona en una **distribución porcentual ilustrativa**. Luego investiga instrumentos que podrían corresponder a cada categoría y explica qué hechos y reglas sostienen la selección.
 
-> **Aviso:** NEXUS funciona en modo demostración. Consulta un catálogo público de FCI para mostrar ejemplos; el escenario sigue siendo manual y no hay cotizaciones ni indicadores en tiempo real. Sus resultados no constituyen asesoramiento financiero personalizado.
+El sistema combina datos y reglas explícitas. **No usa un modelo de lenguaje, aprendizaje automático ni un optimizador de rentabilidad.** La primera etapa usa [Experta](https://github.com/nilp0inter/experta) para inferir perfil y régimen; la distribución la calcula un módulo Python. La selección de instrumentos es otra etapa determinística en Python y depende de fuentes públicas con evidencia vigente. Son dos decisiones distintas: obtener porcentajes no garantiza que haya datos suficientes para seleccionar un instrumento.
 
-## 1. Requisitos
+> NEXUS es una demostración académica con revisión experta pendiente. No genera órdenes, no consulta un broker ni verifica que una cuenta pueda operar un instrumento. Los datos de mercado pueden estar demorados o incompletos; las selecciones no son una validación profesional de idoneidad.
 
-- Python instalado.
-- `pip` disponible desde la terminal.
-- Conexión a Internet para instalar dependencias y consultar el catálogo público de instrumentos. La tipografía web es opcional; el motor sigue funcionando si falla la fuente externa.
+## El flujo en dos etapas
 
-## 2. Archivos del proyecto
+```mermaid
+flowchart LR
+    I[Entradas de la persona] --> V[Validación]
+    V --> H[Hechos y reglas de Experta<br/>perfil y régimen]
+    H --> P[Construcción de cartera<br/>Python + matriz versionada]
+    P --> F[Investigación de instrumentos<br/>hechos públicos con evidencia]
+    F --> R[Reglas de elegibilidad y comparación<br/>Python determinístico]
+    R --> O[Resultado, auditoría e historial]
+    P --> O
+```
 
-El código está organizado por responsabilidad para mantener separadas la interfaz y las reglas de negocio:
+1. **Asignación:** Experta infiere un perfil y un régimen a partir de las entradas. Python aplica la matriz, límites y controles de suma para producir porcentajes.
+2. **Selección:** Python recopila registros públicos, comprueba sus hechos y aplica exclusiones y reglas de comparación. Esta etapa puede terminar sin candidato elegible, aunque la distribución porcentual sea válida.
+
+La investigación no vuelve a calcular la cartera. Actualizar una investigación tampoco ejecuta de nuevo el motor de asignación.
+
+### De respuestas a hechos y reglas
+
+Experta mantiene una memoria de trabajo con hechos tipados. Al iniciar una evaluación, el servicio reinicia el motor, declara `Inversor` y `Mercado`, y `@DefFacts` incorpora `Parametros` con los umbrales de la matriz activa. Las reglas `@Rule` cotejan esos hechos; si una coincide, puede declarar un nuevo hecho como `Perfil` o `Regimen` y agregar una entrada a la auditoría.
+
+Por ejemplo, con tolerancia 10, los parámetros `conservador_max=0` y `moderado_max=10` permiten que coincida esta regla:
 
 ```text
-nexus-simulador-carteras/
-├── app.py
-├── .streamlit/config.toml  # Tema nativo oscuro
-├── config/matriz_decision.json  # Matriz de decisión inicial (versión 1)
-├── data/                   # Generada en ejecución: historial.db y versiones (no versionar)
-├── docs/                   # Alcance y casos del brief
-├── tests/                  # Regresiones del flujo y motor
-├── nexus/
-│   ├── engine.py       # Hechos y reglas de Experta
-│   ├── matrices.py     # RF-08: carga, validación y versionado de la matriz
-│   ├── history.py      # RF-09: historial de evaluaciones en SQLite
-│   ├── portfolio.py    # Reglas de asignación de cartera
-│   ├── service.py      # Evaluación completa, independiente de Streamlit
-│   ├── state.py        # Inicialización del estado de sesión
-│   ├── validation.py   # Validaciones de entrada
-│   ├── ui/
-│   │   ├── common.py   # Componentes comunes
-│   │   └── styles.css  # Estilos de la aplicación
-│   └── views/          # Inicio, Perfil, Escenario, Revisión, Resultado, Auditoría, Historial y Administración
-└── README.md
+SI conservador_max < tolerancia <= moderado_max
+ENTONCES declarar Perfil(nombre="MODERADO")
+         registrar R_PERFIL_02 en la auditoría
 ```
 
-El `README.md` documenta el proyecto y cómo usarlo; no es necesario para ejecutar la aplicación.
+El servicio llama a `run()`, que aplica encadenamiento hacia adelante: busca reglas cuyas condiciones ya coinciden con hechos y ejecuta sus acciones. Las reglas de perfil y régimen leen directamente los hechos de entrada; no se disparan una a otra en una cascada. Después, el servicio recoge los hechos `Perfil` y `Regimen` y se los pasa al módulo de cartera. La tolerancia determina el perfil; capital, horizonte y objetivo no lo cambian y se usan en la validación y los ajustes posteriores de la cartera.
 
-## 3. Instalación
+La prioridad `salience` de Experta ordena activaciones de reglas. Es distinta de `prioridad_regimen` en la matriz, que decide cuál señal de escenario prevalece si hay varias. Esta prioridad configurable no altera el orden de evaluación del perfil.
 
-Para clonar el repositorio privado, usá una cuenta con acceso:
+## Entradas y efecto
 
-```bash
-git clone https://github.com/agusteira/nexus-simulador-carteras.git
-cd nexus-simulador-carteras
-```
+| Entrada | Qué cambia |
+| --- | --- |
+| Tolerancia a una caída | Elige el perfil según los umbrales de la matriz. En v1: 0% conservador; mayor que 0% y hasta 10% moderado; mayor que 10% agresivo. También puede excluir instrumentos incompatibles con el perfil. |
+| Capital y moneda | El capital se convierte a montos por categoría. La selección comprueba mínimos publicados y compatibilidad de la moneda de la clase o cotización; no calcula unidades para comprar ni confirma la moneda de fondeo del intermediario. |
+| Horizonte | Afecta límites de renta variable y la compatibilidad de horizonte y duración de los FCI. |
+| Objetivo | Preservación limita renta variable al 10%; Crecimiento y Renta no tienen ese tope en la política vigente. |
+| Liquidez mínima | Fija el mínimo que debe quedar en Liquidez inmediata. Si hace falta, la cartera retira puntos de otras categorías según el orden de la matriz. |
+| Señales de escenario | Inflación, presión cambiaria y volatilidad se ingresan manualmente. Si no se marca ninguna, el régimen es Estable. Si hay más de una, v1 elige un solo régimen según la prioridad configurable: volatilidad, inflación, presión cambiaria. |
+| Confirmación del escenario | `mercado_actualizado` es el nombre de una confirmación manual de la demo. No consulta precios, fechas ni indicadores para comprobar que el escenario esté actualizado. |
 
-Abrí una terminal dentro de la carpeta del proyecto y ejecutá:
+La validación rechaza capital u horizonte no positivos, tolerancia o liquidez fuera de 0–100, la falta de confirmación manual y la combinación de tolerancia 0% con objetivo Crecimiento. También puede derivar un caso si faltan hechos inferidos o si las reglas no logran una cartera válida.
+
+## Matriz de asignación: versión 1
+
+La matriz base reparte 100 puntos entre cuatro categorías:
+
+| Perfil | Renta fija inflación | Renta fija cambiaria | Renta variable | Liquidez inmediata |
+| --- | ---: | ---: | ---: | ---: |
+| Conservador | 60% | 20% | 0% | 20% |
+| Moderado | 40% | 20% | 20% | 20% |
+| Agresivo | 20% | 15% | 45% | 20% |
+
+La versión vigente de la política agrega topes de renta variable después de los ajustes de matriz:
+
+| Condición | Tope de renta variable |
+| --- | ---: |
+| Horizonte menor a 12 meses | 0% |
+| Horizonte de 12 a 35 meses | 20% |
+| Horizonte de 36 meses o más | Sin tope adicional por horizonte |
+| Objetivo Preservación | 10% |
+| Objetivo Crecimiento o Renta | Sin tope adicional por objetivo |
+
+En cada evaluación, las operaciones se aplican en este orden:
+
+1. Copiar la cartera base del perfil.
+2. Aplicar el ajuste del régimen inferido: inflación mueve 10 puntos de liquidez a renta fija inflación; presión cambiaria mueve 10 puntos de liquidez a renta fija cambiaria; volatilidad mueve de renta variable a liquidez hasta todos los puntos disponibles. La prioridad selecciona un solo régimen.
+3. Aplicar los topes de la matriz por perfil; cualquier excedente pasa a liquidez inmediata.
+4. Aplicar el tope de renta variable por horizonte y objetivo; el excedente pasa a liquidez.
+5. Elevar Liquidez inmediata al mínimo indicado, retirando puntos en el orden configurado.
+6. Comprobar que ninguna categoría sea negativa y que el total sea exactamente 100%. Si no se puede cumplir, el resultado requiere revisión manual.
+
+### Ejemplo reproducible
+
+Supongamos un capital de **ARS 10.000**, horizonte de **24 meses**, objetivo **Preservación**, tolerancia **10%**, liquidez mínima **20%** y la señal manual **presión cambiaria**. Este cálculo usa la matriz v1 y no necesita consultar instrumentos ni la red.
+
+1. 10% de tolerancia produce el perfil **Moderado**; su base es 40/20/20/20.
+2. Presión cambiaria mueve 10 puntos de Liquidez inmediata a Renta fija cambiaria: 40/30/20/10.
+3. El tope por horizonte de 24 meses es 20% de renta variable, así que no cambia la distribución.
+4. Preservación limita Renta variable a 10%; los 10 puntos excedentes pasan a liquidez: **40/30/10/20**.
+5. El mínimo de liquidez del 20% ya se cumple.
+
+| Categoría | Porcentaje | Monto simulado |
+| --- | ---: | ---: |
+| Renta fija inflación | 40% | ARS 4.000 |
+| Renta fija cambiaria | 30% | ARS 3.000 |
+| Renta variable | 10% | ARS 1.000 |
+| Liquidez inmediata | 20% | ARS 2.000 |
+
+Los montos son porcentajes del capital ingresado. No son cantidades de instrumentos ni una predicción de resultados.
+
+### Versiones de reglas y de conocimiento
+
+La matriz se puede cambiar desde **Más opciones → Administración de matrices**. Guardar una edición o restaurar una versión crea una versión nueva; no sobrescribe las anteriores. Cada evaluación registra la versión que usó. Esto cambia las reglas de asignación futuras, no reescribe resultados guardados.
+
+[`nexus/instrument_knowledge.py`](nexus/instrument_knowledge.py) contiene `KnowledgeStore`, que conserva fichas y evidencia de instrumentos con versiones e historial de señales. Ese almacén es independiente de la matriz de cartera: las señales no entrenan modelos, no cambian reglas y no validan una ficha por sí solas.
+
+## Cómo se seleccionan los instrumentos
+
+La matriz de cartera es una decisión versionada en [`config/matriz_decision.json`](config/matriz_decision.json). La política de selección actual es `argentina-4`, en [`config/instrument_policy.json`](config/instrument_policy.json). Las reglas ejecutables están en Python; la lista `ranking_order` del JSON no configura por sí sola el comparador.
+
+El alcance actual es `ARGENTINA_SIN_BROKER`: FCI argentinos y valores BYMA de tipos admitidos. El proceso:
+
+1. Reúne el universo de fuentes y completa las consultas dentro de límites de tiempo y cantidad.
+2. Conserva los hechos faltantes como desconocidos y comprueba evidencia, fechas, moneda, mínimos, plazo y exposición.
+3. Excluye candidatos que incumplen una regla; los datos contradictorios o inválidos requieren revisión.
+4. Compara solo candidatos elegibles. Los hechos no comparables no se rellenan con cero. No se favorece un ticker, una marca ni una señal de familiaridad.
+5. Conserva hasta dos opciones bajo el **mismo presupuesto de categoría**. La segunda es una alternativa y no una segunda posición añadida a la cartera.
+
+En la implementación vigente, primero cuentan factores comunes —plazo publicado cuando está disponible y diversificación comprobada—. Dentro de FCI se comparan gastos anuales publicados y patrimonio de clase; dentro de valores BYMA se comparan spread y presencia observada. Entre tipos distintos se usan solo factores comunes y un desempate estable por identidad canónica. Riesgo comparable y familiaridad no están disponibles como factores de ranking en las fuentes inspeccionadas.
+
+### Hechos, fechas y límites
+
+- **CAFCI:** catálogo, planilla diaria y fichas de fondos. El VCP diario es por mil cuotapartes y no se convierte en `unit_price`. Patrimonio de clase no significa volumen negociado, seguridad ni liquidez en un broker.
+- **BYMADATA:** observaciones de mercado público con demora. Una oferta observada no es una operación ejecutada ni necesariamente el último precio negociado.
+- **Composición:** las fichas de fondos pueden publicar nombres y porcentajes con fecha propia. Para recomendar exposición CER o cambiaria, la política exige más de 50% de exposición explícita identificada en una composición publicada dentro de 35 días. Un mandato u objetivo del fondo no demuestra por sí solo su exposición actual.
+- **Desconocido no significa cero:** un honorario, precio, lote, acceso o moneda de suscripción no publicados siguen sin dato. Los gastos anuales publicados del fondo no son comisiones de una orden ni un costo total en pesos.
+- **Broker separado:** `execution_checks` mantiene por separado la disponibilidad, las condiciones y los costos que debe confirmar un intermediario. Una selección no implica que ese broker ofrezca el instrumento ni que una orden pueda ejecutarse.
+- **Cripto:** la política no asigna Bitcoin ni vehículos de exposición a Bitcoin; tampoco existe una biblioteca cripto independiente en el resultado.
+
+Las consultas guardadas conservan fecha de observación, fecha de los datos cuando existe, fuente, evidencia por campo y vencimiento. Entre los límites vigentes están hasta 7 días para hechos CAFCI, 35 días para composición y 15 minutos para observaciones de mercado BYMA. Los umbrales son reglas provisionales del prototipo, no una política experta validada.
+
+### Estados de salida
+
+La asignación y la selección tienen estados distintos:
+
+| Estado | Significado |
+| --- | --- |
+| `RECOMENDACION_EXITOSA` | La etapa de asignación produjo porcentajes válidos. No garantiza que la investigación encuentre instrumentos elegibles. |
+| `DERIVADO_ASESOR_MANUAL` | La etapa de asignación no pudo continuar con sus entradas o reglas. No se contacta ni asigna un asesor real. |
+| `CONSERVAR_CANDIDATO` | En una categoría se conserva el candidato elegible con mejor posición según los hechos comparables. |
+| `PROPONER_ALTERNATIVA_COMPATIBLE` | Se elige otro candidato elegible; el motivo y la comparación quedan en la auditoría. |
+| `INFORMACION_INSUFICIENTE` | Faltan hechos requeridos o evidencia vigente para seleccionar. |
+| `REQUIERE_REVISION` | Hay datos contradictorios o inválidos. |
+| `AMPLIAR_BUSQUEDA` | Evento intermedio: se buscan otros candidatos dentro del presupuesto de consultas. No es una selección final. |
+| `EXCLUIR` | El candidato incumple una regla del alcance de recomendación del instrumento. |
+| `EXCLUIR_CANDIDATO` | Descartado por reglas del modo estricto o por duplicación de subyacente; el alcance actual también registra `EXCLUIR`. |
+
+No se promete que todas las categorías terminen con una selección.
+
+## Auditoría, JSON e historial
+
+Cada resultado conserva entradas congeladas, perfil y régimen, versión de matriz, versión de política, porcentajes, motivos y estado. El JSON descargable y la auditoría permiten revisar esa ejecución después, aunque se modifiquen borradores.
+
+La investigación de instrumentos se guarda como una revisión separada. Actualizarla conserva el resultado previo y no cambia sus porcentajes. Las señales de ficha —**Entendí**, **Ya lo conocía** o **Señalar un dato**— quedan como feedback local para futuras revisiones; no entrenan un modelo ni validan financieramente un instrumento.
+
+El historial y las revisiones usan SQLite en el servidor bajo `data/` o `NEXUS_DATA_DIR`. El identificador de usuario sirve para filtrar el historial, no autentica a la persona ni aísla sus datos.
+
+## Mapa del código
+
+| Archivo | Responsabilidad |
+| --- | --- |
+| [`nexus/engine.py`](nexus/engine.py) | Hechos y reglas Experta para perfil y régimen. |
+| [`nexus/service.py`](nexus/service.py) | Validación, ejecución del motor y armado de resultado. |
+| [`nexus/portfolio.py`](nexus/portfolio.py) | Aplicación ordenada de matriz, topes y liquidez. |
+| [`nexus/validation.py`](nexus/validation.py) | Validaciones de entrada antes de ejecutar. |
+| [`config/matriz_decision.json`](config/matriz_decision.json) | Matriz inicial versionada y prioridad de regímenes. |
+| [`config/instrument_policy.json`](config/instrument_policy.json) | Alcance y límites de la política de instrumentos. |
+| [`nexus/instrument_research.py`](nexus/instrument_research.py) | Descubrimiento, evidencia, límites de búsqueda e historial de investigación. |
+| [`nexus/instrument_recommendations.py`](nexus/instrument_recommendations.py) | Elegibilidad, exclusiones, ranking y decisiones por categoría. |
+| [`nexus/cafci.py`](nexus/cafci.py), [`nexus/byma_public.py`](nexus/byma_public.py) | Adaptadores de hechos públicos CAFCI y BYMADATA. |
+| [`nexus/history.py`](nexus/history.py) | Persistencia de evaluaciones y revisiones SQLite. |
+| [`nexus/instrument_knowledge.py`](nexus/instrument_knowledge.py) | Versiones e historial de fichas, evidencia y feedback de instrumentos. |
+| [`docs/instrument-research.md`](docs/instrument-research.md), [`docs/instrument-policy.md`](docs/instrument-policy.md) | Alcance de fuentes, evidencia y reglas detalladas. |
+
+## Instalar, ejecutar y comprobar
+
+Desde la carpeta del proyecto, instalá las dependencias:
 
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-Si en tu sistema el comando `python` no funciona, probá con `py` en Windows:
-
-```bash
-py -m pip install -r requirements.txt
-```
-
-## 4. Ejecutar la aplicación
-
-Desde la carpeta que contiene `app.py`, ejecutá:
+Iniciá Streamlit:
 
 ```bash
 python -m streamlit run app.py
 ```
 
-En Windows también podés probar:
-
-```bash
-py -m streamlit run app.py
-```
-
-Streamlit mostrará una dirección local en la terminal (normalmente `http://localhost:8501`). Abrila en el navegador.
-
-En este equipo, el entorno local ya preparado se inicia desde PowerShell con:
-
-```powershell
-.\.venv\Scripts\python.exe -m streamlit run app.py
-```
-
-## 5. Cómo utilizar NEXUS
-
-El recorrido principal tiene cuatro pasos, con acciones para avanzar y volver. La auditoría está disponible desde el resultado y en las opciones del menú lateral.
-
-### Inicio
-
-Elegí **Comenzar simulación** o retomá el trabajo de la sesión. El escenario es simulado; al generar un resultado exitoso se consulta una publicación pública de fondos. No se envían solicitudes a un asesor.
-
-### Paso 1 — Tu perfil
-
-Ingresá capital y moneda, horizonte en meses, objetivo, tolerancia a una caída temporal y liquidez mínima. El capital empieza vacío. Los demás valores iniciales son editables. Los ejemplos monetarios ayudan a interpretar los porcentajes; no son pronósticos ni garantías.
-
-Elegí **Guardar perfil y continuar**. Los errores de formato o valores faltantes se muestran en este paso. Una combinación que requiere revisión manual puede conservarse para obtener la explicación del motor.
-
-### Paso 2 — Escenario
-
-Podés empezar con uno de los cuatro ejemplos ficticios y luego ajustar las señales: inflación, presión cambiaria y volatilidad elevadas. Los ejemplos no representan el mercado actual. Ninguna señal marcada significa “sin alertas en esta simulación”, no que el mercado real esté estable.
-
-La casilla confirma que comprendés que el escenario es manual y simulado. Para compatibilidad con la interfaz del servicio original, la confirmación se transmite en `mercado_actualizado`; **no es una comprobación de vigencia real**. La procedencia de la simulación se identifica por separado en el estado de sesión. Luego elegí **Guardar escenario y revisar**.
-
-### Paso 3 — Revisar datos
-
-Verificá el perfil y el escenario guardados; podés volver a editarlos. Si hay cambios en borrador sin guardar, deben resolverse antes de ejecutar, para evitar evaluar otras entradas por accidente.
-
-Elegí **Ejecutar evaluación**. Este es el único paso que ejecuta el motor.
-
-### Paso 4 — Resultado
-
-Consultá la distribución, importes y motivos de la última evaluación. Si cambiaste entradas o dejaste borradores pendientes, la salida anterior se identifica como desactualizada hasta volver a evaluar. Sus importes y descargas siguen correspondiendo a las entradas de aquella ejecución.
-
-Podés editar el perfil, simular otro escenario, consultar la auditoría y descargar JSON. Si el motor deriva el caso a revisión manual, la pantalla explica el motivo y ofrece una ruta de corrección; **no significa que se haya contactado o asignado un asesor real**.
-
-### Conservación de datos
-
-Las respuestas y los borradores se conservan al navegar durante la misma sesión de Streamlit. Cada evaluación y sus revisiones de investigación también se guardan en SQLite en el servidor (sección 14). Los borradores no guardados pueden perderse al recargar. El identificador de usuario es una etiqueta de consulta; no implementa autenticación ni aislamiento entre usuarios.
-
-## 6. ¿Qué significa “DERIVADO_ASESOR_MANUAL”?
-
-Es un estado de control: el prototipo no genera una asignación cuando detecta una condición que sus reglas consideran inválida, inconsistente o incompleta.
-
-Entre las causas contempladas por el código están:
-- Capital igual o menor que cero.
-- Horizonte de inversión igual o menor que cero.
-- Valores de tolerancia al riesgo o liquidez fuera del rango permitido.
-- No confirmar el escenario de simulación.
-- Tolerancia a pérdidas del 0 % junto con el objetivo **Crecimiento**.
-- Inferencia incompleta o una asignación que no cumple las reglas de distribución.
-
-**La confirmación corresponde al ejercicio simulado.** No comprueba cotizaciones, fuentes externas ni antigüedad de indicadores.
-
-## 7. Descargar resultados
-
-En la pantalla Resultado, la aplicación permite descargar la última salida como JSON, incluyendo la consulta de ejemplos y sus fechas cuando esté disponible. La sección Auditoría también permite exportar la traza disponible. Estos archivos se generan al descargarlos; no hace falta crearlos antes de iniciar la aplicación.
-
-## 8. Dependencias
-
-Las dependencias principales usadas por el código son:
-- `streamlit`: interfaz web.
-- `experta`: motor de reglas del sistema experto.
-
-Los módulos `json`, `datetime` y `pathlib` pertenecen a la biblioteca estándar de Python.
-
-## 9. Limitaciones conocidas
-
-- El catálogo externo puede estar incompleto o no disponible; no hay cotizaciones en tiempo real ni elegibilidad financiera completa.
-- El escenario de mercado se ingresa manualmente.
-- Las asignaciones son ilustrativas y se basan en reglas determinísticas definidas en el código.
-- El historial (SQLite) y las versiones de la matriz se guardan en `data/`, en el disco del servidor. En Streamlit Community Cloud ese disco es efímero: se pierde al reiniciar o redesplegar la app.
-- El prototipo no debe utilizarse como asesoramiento financiero real.
-
-## 10. Solución de problemas
-
-### `streamlit` no se reconoce como comando
-Ejecutá la aplicación con:
-
-```bash
-python -m streamlit run app.py
-```
-
-### Falta el módulo `experta` o `streamlit`
-Instalá las dependencias de nuevo:
-
-```bash
-python -m pip install -r requirements.txt
-```
-
-### Aparece `ERR_DATOS_MERCADO_NO_DISPONIBLES`
-Entrá en **Escenario**, revisá el ejercicio simulado y confirmá su naturaleza manual antes de guardar. La UI impide avanzar sin esa confirmación; el servicio mantiene el código de error original para otras entradas.
-
-### La aplicación indica que faltan datos
-Guardá primero **Tu perfil** y después **Escenario**. En **Revisar datos**, verificá las entradas y ejecutá la evaluación.
-
----
-
-**NEXUS · Simulador de carteras · Prototipo académico · Modo demostración**
-
-## 11. Verificación y alcance del brief
-
-Ejecutá las pruebas desde el entorno que contiene Streamlit y Experta:
+La aplicación abrirá una dirección local, normalmente `http://localhost:8501`. Para ejecutar las pruebas existentes:
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-Las pruebas cubren el recorrido, borradores, restauración de respuestas, resultados desactualizados, errores controlados y diez casos de regresión del motor. Los casos y las funciones pendientes del brief se documentan en [docs/validacion-brief.md](docs/validacion-brief.md). Su aprobación por el docente o asesor sigue pendiente; una prueba técnica no certifica idoneidad financiera ni cumplimiento regulatorio.
-
-
-## 12. Universo de candidatos y selección
-
-Al abrir un resultado exitoso, NEXUS consulta el [catálogo y la planilla diaria de CAFCI](https://estadisticas.cafci.org.ar/consulta-avanzada) y los paneles públicos de [BYMADATA](https://open.bymadata.com.ar/), sin depender de un broker. Normaliza fondos/clases y valores BYMA, y consulta sus fichas técnicas. No fija ganadores por nombre, marca, ticker ni orden de llegada. ArgentinaDatos se conserva por compatibilidad histórica y pruebas inyectadas.
-
-La consulta de catálogo tiene timeout de 8 segundos y caché de 15 minutos. Se exige una publicación fechada y vigente. Cada composición conserva su propia fecha: consultar hoy una ficha no convierte sus tenencias históricas en actuales. **Actualizar investigación** crea una revisión; navegar no repite consultas ni altera la distribución.
-
-La pantalla conserva las tres pestañas de distribución, instrumentos e interpretación. Los paneles empiezan cerrados. El esquema 4 y la política `argentina-4` seleccionan instrumentos para el mercado argentino: solo `category.selected`, respaldado por una evaluación elegible, genera tarjetas. `execution_checks` conserva por separado la disponibilidad, moneda de fondeo, precio final y comisiones pendientes del intermediario. Las consultas de alcances anteriores requieren actualización explícita; su JSON histórico permanece intacto.
-
-Se evalúa el pool completo antes de acotar las fichas y se agrupan clases del mismo fondo. Las consultas se reparten por turnos entre categorías. Se conserva el candidato inicial para explicar una conservación o sustitución. Se comparan plazo, monto, exposición corroborada y los gastos o métricas que sean comparables; un candidato desconocido puede ganar por sus hechos. Patrimonio de fondo y monto negociado son métricas distintas, y no se usan como sinónimos de seguridad. La familiaridad no decide el ranking.
-
-- Un mandato CER o dollar-linked orienta la investigación. La selección exige mayoría estricta de exposición identificada en la composición publicada, con fecha de hasta 35 días; no se presenta como la cartera de hoy.
-- Los honorarios anuales publicados se conservan con su desglose. No equivalen a un costo operativo en pesos.
-- T+0 y una marca de liquidez no prueban disponibilidad inmediata ni horarios de rescate.
-- BYMADATA aporta observaciones públicas con demora. Una oferta observada no tiene fecha de último negocio informada: no se convierte en cotización ejecutable ni se mezcla con el precio del subyacente.
-
-Si falta un hecho necesario para recomendar el instrumento, el resultado es **información insuficiente**; no se rellena con una ficha conocida. Los datos de ejecución pendientes del broker no se convierten en falsos hechos ni bloquean por sí solos la recomendación del instrumento. Se excluyen clases calificadas/cerradas, mínimos incompatibles, exposición no corroborada y restricciones de perfil/plazo, entre otras reglas. La política del simulador sigue pendiente de revisión experta y no se presenta como idoneidad profesional validada.
-
-La consulta queda dentro de `resultado_robo.ejemplos_instrumentos`, con hash de la ejecución, copia de las entradas originales, fechas, fuente, moneda, criterios y limitaciones. Resultado, auditoría y JSON conservan esa misma consulta aunque se edite el perfil. Una nueva evaluación genera otra consulta; actualizar los ejemplos no vuelve a ejecutar las reglas ni cambia sus porcentajes. Cada actualización añade una revisión al historial SQLite, sin sobrescribir la evaluación original.
-
-
-## 13. Matrices de decisión configurables (RF-08)
-
-Los umbrales de perfil, las carteras base, los topes por clase de activo, las reglas de ajuste por escenario y su prioridad se leen en cada evaluación desde la versión activa de la matriz. La versión 1 es `config/matriz_decision.json` y reproduce exactamente las reglas originales.
-
-Desde el menú lateral, **Más opciones → Administración de matrices**, se editan los valores, se indica responsable y motivo y se guarda una **versión nueva** (no se sobrescriben las anteriores). La tabla de historial muestra número, fecha, responsable y nota; cualquier versión anterior se puede ver en JSON y **restaurar**, lo que crea otra versión nueva con su contenido. Las versiones se guardan en `data/matrices_versiones.json`. Cada resultado incluye `version_matriz`.
-
-Si se define la variable de entorno o el secreto `NEXUS_ADMIN_CLAVE`, la pantalla pide esa clave; sin ella funciona en modo demo. Las categorías de activos son fijas porque los ejemplos de instrumentos dependen de ellas. El orden de retiro para cubrir la liquidez mínima (`orden_retiro_liquidez`) sólo se edita en el JSON.
-
-## 14. Historial de evaluaciones (RF-09)
-
-El perfil tiene un **identificador de usuario** opcional (vacío = `anonimo`). Cada evaluación ejecutada se guarda en `data/historial.db` (SQLite) con entradas, escenario, resultado, asignación, traza, errores, versión de la matriz y fecha.
-
-En **Más opciones → Historial de evaluaciones** se filtra por usuario (sin distinguir mayúsculas) y rango de fechas, se abre el detalle completo con su traza y su JSON descargable, y se comparan dos evaluaciones lado a lado con las diferencias por categoría. La variable `NEXUS_DATA_DIR` permite cambiar la carpeta de datos; las pruebas la usan para no tocar `data/`.
-
-## 15. Investigación y conocimiento de instrumentos (issue #1)
-
-La consulta agrega `ejemplos_instrumentos.investigacion`: candidato inicial, alternativas, exclusiones, reglas, evidencia por campo, faltantes y versiones de política, universo y fichas. Primero se aplican exclusiones; solo los candidatos elegibles se ordenan por criterios operativos y diversificación conocida. La familiaridad educativa actúa después y nunca elimina una exclusión. No hay un puntaje de “mejor inversión” ni se usan rendimientos recientes.
-
-El universo curado distingue SPY exterior y su CEDEAR, MELI exterior y su CEDEAR, acción local YPFD y ADR YPF, Bitcoin directo y un fondo con exposición a Bitcoin. Cada ficha conserva mercado, vehículo y subyacente; no se comparten precios ni unidades. Las fuentes oficiales verifican identidad y los campos que efectivamente publican. No prueban condiciones del broker, costos totales, liquidez inmediata ni disponibilidad para operar. IBIT permanece como propuesta educativa sin proveedor habilitado. BTC y sus vehículos no reciben asignación.
-
-La investigación usa `ResearchLimits`: doce fichas, veinticuatro segundos y doce candidatos por categoría por defecto; timeout de hasta cuatro segundos por ficha. Los catálogos tienen un presupuesto separado de hasta seis solicitudes HTTP de ocho segundos (CAFCI JSON/diaria y hasta dos páginas por panel BYMA). CAFCI y BYMA se consultan en paralelo; la caché dura quince minutos. **Actualizar investigación** añade una revisión explícita. No se envían respuestas personales a proveedores.
-
-La política provisional `config/instrument_policy.json` hace intervenir horizonte y objetivo en la asignación, con topes explícitos y trazas. **Su revisión experta está pendiente**: ningún resultado se presenta como compatibilidad financiera validada. Reglas, prioridades, umbrales y limitaciones: [política educativa](docs/instrument-policy.md).
-
-Las fichas y evidencias se guardan en `data/instrument_knowledge.db` con versiones, vencimiento e historial. `KnowledgeStore.history` y `restore` permiten consultar y restaurar creando una versión nueva. Un instrumento nuevo sigue como propuesta hasta completar sus verificaciones. Las señales **Entendí**, **Ya lo conocía** y **Señalar un dato** se registran por separado: una corrección obliga a revisión futura y ninguna señal cambia por sí sola las reglas de riesgo. Es reutilización de conocimiento, no entrenamiento automático.
-
-Los arrays legados se conservan en el JSON y no generan tarjetas. `educational_selection` queda como proyección de compatibilidad del mismo `selected`; no existe una segunda selección con requisitos menores. BTC y los vehículos sin política de asignación permanecen en la auditoría; el resultado no agrega una biblioteca independiente. Consultá el [flujo y la cobertura de fuentes](docs/instrument-research.md).
+La interfaz necesita conexión para consultar fuentes públicas. Las pruebas usan fixtures y no dependen de Internet. El historial y las versiones se escriben en el disco del servidor; en hosting con disco efímero se pierden al reiniciar o redesplegar, salvo que se configure un `NEXUS_DATA_DIR` persistente.
