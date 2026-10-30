@@ -130,7 +130,7 @@ def _render_interpretation(resultado):
     reglas = resultado.get("auditoria", [])
     st.markdown("## Cómo se interpretaron tus respuestas")
     if reglas:
-        for regla in reglas[:2]:
+        for regla in reglas:
             st.markdown(f"- {regla['motivo']}")
     else:
         st.info("Esta evaluación no incluye una traza de auditoría disponible.")
@@ -138,8 +138,8 @@ def _render_interpretation(resultado):
         if reglas:
             st.dataframe(reglas, width="stretch", hide_index=True)
         st.caption(
-            "La traza es parcial: registra clasificación de perfil y escenario, "
-            "pero no detalla cada ajuste porcentual de la cartera."
+            "La traza registra perfil, escenario y los topes aplicados por horizonte "
+            "y objetivo. Los demás ajustes siguen la matriz de decisión guardada."
         )
         st.json(resultado)
 

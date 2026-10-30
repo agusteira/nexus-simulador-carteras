@@ -13,6 +13,9 @@ PROFILE_FIELDS = {
     "objetivo": ("perfil_objetivo", "Preservacion"),
     "tolerancia": ("perfil_tolerancia", 10),
     "liquidez": ("perfil_liquidez", 20),
+    # Preserve the optional declaration in existing sessions; the current
+    # recommendation scope is Argentina and does not require a broker account.
+    "acceso": ("perfil_acceso", []),
 }
 
 
@@ -117,6 +120,7 @@ def render():
         )
         if "horizonte" in errors:
             st.error(errors["horizonte"])
+        st.caption("Mercado de esta simulación: Argentina. La selección de instrumentos es independiente del broker.")
     with right, st.container(border=True):
         st.markdown("## Lo que necesitás")
         objetivo = st.selectbox(

@@ -1,0 +1,29 @@
+{
+  "version": "argentina-4",
+  "expert_review": "pending",
+  "crypto_allocation": false,
+  "equity_caps": {
+    "horizon_months": {"under_12": 0, "12_to_35": 20, "36_or_more": null},
+    "objectives": {"Preservacion": 10, "Crecimiento": null, "Renta": null}
+  },
+  "liquidity_required_immediate_at_or_above": 50,
+  "concentration_limits_percent": {"issuer": 50, "sector": 75, "country": 100},
+  "evidence_max_age_days": {"fci": 7, "identity": 30},
+  "educational_only": true,
+  "selection_scope": "ARGENTINA_SIN_BROKER",
+  "recommendation": {
+    "catalog_max_age_days": 7,
+    "composition_max_age_days": 35,
+    "snapshot_max_age_minutes": 15,
+    "minimum_specific_exposure_percent": 50,
+    "specific_exposure_requires_strict_majority": true,
+    "fund_horizon_min_months": {"Corto Plazo": 1, "Mediano Plazo": 12, "Largo Plazo": 36},
+    "fund_duration_max_months": {"Menor o Igual a 0.5 Año": 6, "Menor o Igual a 1 Año": 12, "Mayor a 1 y Menor Igual 3 Años": 36},
+    "maximum_equity_spread_percent": 5,
+    "require_non_qualified_fund_class": true,
+    "liquidity_fund_settlement_days": 0,
+    "broker_fees_included": false,
+    "ranking_order": ["risk_fit", "settlement_days", "verified_diversification", "published_fund_fees", "observed_spread", "observed_market_presence", "familiarity", "canonical_id"],
+    "notes": "La selección es del instrumento en el mercado argentino. La comprobación de una orden concreta y sus costos permanece separada. La composición es la última publicada dentro de 35 días, no una afirmación de tenencias de hoy. Los umbrales son provisionales y no constituyen validación experta."
+  }
+}
