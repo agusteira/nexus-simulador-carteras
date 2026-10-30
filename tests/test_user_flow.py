@@ -23,7 +23,7 @@ class UserFlowTest(unittest.TestCase):
         entorno.start()
         self.addCleanup(entorno.stop)
         today = datetime.now(timezone.utc).date().isoformat()
-        self.public_source = patch("nexus.instruments.ArgentinaDatosClient.fund_catalog", return_value={
+        self.public_source = patch("nexus.cafci.CAFCIClient.fund_catalog", return_value={
             "fondos": [{"nombre": "Fondo offline de prueba", "fondoId": "1", "claseId": "1", "fecha": today,
                         "tipoRenta": "Renta Variable", "moneda": "Peso Argentino", "monedaInversion": "Peso Argentino"}],
             "fuente": "Fixture offline de tests", "url": "https://example.test/funds", "cache": False,
@@ -83,6 +83,21 @@ class UserFlowTest(unittest.TestCase):
         self.navigate("perfil")
         self.assertEqual(self.app.session_state["perfil_capital"], 300000.0)
         self.assertEqual(self.app.session_state["datos_inversor"]["capital"], 250000.0)
+
+    def test_market_access_is_explicit_and_frozen_with_the_evaluation(self):
+        self.fill_profile()
+        self.assertEqual(self.app.session_state["datos_inversor"]["acceso"], [])
+        self.navigate("perfil")
+        self.app.multiselect(key="perfil_acceso").set_value(["local"]).run()
+        self.click("Guardar perfil y continuar")
+        self.evaluate()
+        original = self.app.session_state["snapshot_ejecucion"]
+        self.assertEqual(original["perfil"]["acceso"], ["local"])
+        self.navigate("perfil")
+        self.app.multiselect(key="perfil_acceso").set_value(["local", "international"]).run()
+        self.navigate("resultado")
+        self.assertEqual(self.app.session_state["snapshot_ejecucion"]["perfil"]["acceso"], ["local"])
+        self.assertEqual(self.source_mock.call_count, 1)
 
     def test_missing_capital_is_validated_on_submit(self):
         self.navigate("perfil")
@@ -218,23 +233,24 @@ class UserFlowTest(unittest.TestCase):
         self.click("Actualizar investigación")
         self.assertEqual(self.source_mock.call_count, 2)
 
-    def test_failed_catalog_shows_one_warning_and_retry_recovers(self):
+    def test_failed_catalog_recovers_without_manufacturing_selections(self):
         from nexus.market_data import MarketDataError
         good = self.source_mock.return_value
         self.source_mock.side_effect = [MarketDataError("Fixture offline: sin conexión"), good]
         self.fill_profile()
         self.evaluate()
-        self.assertFalse(self.app.warning)
+        self.assertTrue(any("El motor no seleccionó" in item.value for item in self.app.warning))
         # Reference research remains inspectable when the FCI catalog fails;
         # source-specific examples must not claim that funds were retrieved.
         saved = self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]
         self.assertFalse(saved["fuentes"])
         self.assertTrue(saved["investigacion"]["educational_universe"])
         self.assertTrue(all(not c["ejemplos"] and not c["alternativas"] for c in saved["categorias"]))
+        self.assertTrue(all(not c["selected"] for c in saved["investigacion"]["categories"]))
         self.assertEqual(len([b for b in self.app.button if "Actualizar investigación" in b.label]), 1)
         self.click("Actualizar investigación")
         self.assertEqual(self.source_mock.call_count, 2)
-        self.assertFalse(self.app.warning)
+        self.assertTrue(any("El motor no seleccionó" in item.value for item in self.app.warning))
         self.assertTrue(self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]["fuentes"])
 
     def test_legacy_fci_alternatives_are_not_rendered_as_investigated_cards(self):
@@ -248,8 +264,12 @@ class UserFlowTest(unittest.TestCase):
         self.fill_profile()
         self.evaluate()
         visible = " ".join(item.value for item in [*self.app.markdown, *self.app.text] if isinstance(item.value, str))
-        self.assertIn("Instrumentos para entender tu cartera", visible)
-        self.assertNotIn("Renta fija alternativa", visible)
+        self.assertIn("Selección de instrumentos", visible)
+        # The rejected candidate remains inspectable in the closed audit detail,
+        # but must never appear as an instrument card or a selected record.
+        self.assertFalse(any("<h3>Renta fija alternativa" in item.value for item in self.app.markdown))
+        research = self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]["investigacion"]
+        self.assertTrue(all(not category["selected"] for category in research["categories"]))
 
     def test_zero_results_explain_currency_and_category_budget_together(self):
         today = datetime.now(timezone.utc).date().isoformat()
@@ -270,7 +290,7 @@ class UserFlowTest(unittest.TestCase):
         variable = next(item for item in saved["categorias"] if item["categoria"] == "Renta variable")
         self.assertEqual(variable["diagnostico"]["descartados"]["moneda"], 1)
         self.assertEqual(variable["diagnostico"]["descartados"]["minimo_superior"], 1)
-        self.assertTrue(any(label.startswith("Renta variable ·") and "Sin una referencia verificada" in label for label in labels))
+        self.assertTrue(any(label.startswith("Renta variable ·") and "Sin selección" in label for label in labels))
 
     def test_legacy_saved_examples_render_fallback_without_requery(self):
         self.fill_profile()
@@ -282,10 +302,11 @@ class UserFlowTest(unittest.TestCase):
             category.pop("monto_asignado", None)
         for category in saved["investigacion"]["categories"]:
             category.pop("educational_selection", None)
+        saved["investigacion"]["schema_version"] = 2
         self.navigate("auditoria")
         self.navigate("resultado")
         self.assertEqual(self.source_mock.call_count, 1)
-        self.assertTrue(any("formato de fichas educativas" in item.value for item in self.app.info))
+        self.assertTrue(any("consulta anterior mostraba referencias informativas" in item.value for item in self.app.info))
         self.assert_clean()
 
     def test_example_scenarios_update_draft_and_evaluation(self):

@@ -1,6 +1,6 @@
 # Política educativa de instrumentos
 
-La versión `educational-2` es una regla determinista de cribado y compatibilidad operativa. **No está validada por especialistas**, no certifica elegibilidad financiera y no constituye asesoramiento ni recomendación personalizada. `expert_review` permanece `pending`.
+La versión `educational-3` es una regla determinista de cribado y compatibilidad operativa. **No está validada por especialistas**, no certifica elegibilidad financiera y no constituye asesoramiento ni recomendación personalizada. `expert_review` permanece `pending`.
 
 ## Orden de decisión
 
@@ -27,7 +27,7 @@ Los límites y umbrales son decisiones educativas provisionales y deben revisars
 
 ## Referencias educativas
 
-La pantalla puede mostrar hasta dos referencias de clase solo cuando la fuente observada confirma identidad y categoría/exposición. Una sugerencia familiar o `category_hint` curado solo dirige la búsqueda; no certifica la clase. El mandato publicado por un emisor puede explicar el objetivo del fondo, pero no comprueba que la cartera actual tenga esa exposición; las reglas financieras estrictas dejan esa exposición pendiente hasta contar con datos actuales. Las fuentes primarias observadas sobre el mandato tienen prioridad educativa frente a una etiqueta amplia del catálogo, sin presentar el fondo como selección financiera. Si moneda, costos, acceso, liquidación u otros datos de operación faltan, la ficha lo indica como pendiente. Estas fichas explican una clase de instrumento y permanecen separadas de la decisión financiera estricta.
+Solo `selected` representa una selección. Cada instrumento mostrado debe superar las mismas reglas estrictas y evidencias que determinan `selected`; una categoría conocida, familiaridad, etiqueta educativa o ficha explicativa nunca crea una selección aparte. Si los datos no alcanzan para elegir, no se muestran tarjetas. `educational_selection`, cuando se entrega por compatibilidad, es únicamente una proyección de `selected`. El universo curado y los indicios de búsqueda sirven para investigar candidatos, no prueban elegibilidad ni que el universo de búsqueda esté completo. El ranking compara los candidatos con datos y evidencia disponibles; la identidad canónica solo desempata resultados equivalentes.
 
 ## Identificadores auditables
 

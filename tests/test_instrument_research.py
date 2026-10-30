@@ -16,6 +16,27 @@ SNAPSHOT = {"perfil": {"capital": 100000, "moneda": "ARS", "usuario_id": "privat
             "escenario": {"notas": "private context"}}
 
 
+def complete_equity(canonical_id, *, costs=0, familiar=False):
+    record = {"canonical_id": canonical_id, "instrument_type": "ETF", "ticker": canonical_id.split(":")[1],
+              "market": "NYSE", "name": canonical_id, "category": "Renta variable", "exposure": "equity",
+              "quotation_currency": "ARS", "subscription_currency": "ARS", "economic_currency": "ARS",
+              "minimum": 1, "lot_size": 1, "unit_price": 10, "costs": costs, "settlement_days": 1,
+              "liquidity": "daily", "access": "local", "issuer": "Issuer", "sector": "Broad",
+              "country": "AR", "issuer_role": "economic_issuer", "country_role": "economic_exposure",
+              "underlying_id": "INDEX:" + canonical_id.split(":")[1], "holdings": ["ONE", "TWO"],
+              "familiar": familiar, "familiarity_basis": "catalog" if familiar else None,
+              "validation_status": "observed", "contradictions": [], "evidence": []}
+    fields = ("canonical_id", "instrument_type", "ticker", "market", "name", "category", "exposure",
+              "quotation_currency", "subscription_currency", "economic_currency", "minimum", "lot_size",
+              "unit_price", "costs", "settlement_days", "liquidity", "access", "issuer", "sector",
+              "country", "issuer_role", "country_role", "underlying_id", "holdings")
+    for field in fields:
+        record["evidence"].append({"source": "fixture", "url": "https://fixture.example/data",
+            "fields": {field: record[field]}, "observed_at": "2026-10-29T12:00:00+00:00",
+            "data_date": "2026-10-29", "expires_at": "2026-11-28T12:00:00+00:00", "kind": "observed"})
+    return record
+
+
 class Provider:
     def __init__(self): self.calls = []
     def research(self, record, **kwargs):
@@ -24,7 +45,84 @@ class Provider:
 
 
 class InstrumentResearchTests(unittest.TestCase):
-    def test_familiar_fci_after_many_unknown_api_rows_is_investigated(self):
+    def test_complete_candidate_after_first_twenty_wins_and_original_stays_auditable(self):
+        incomplete = [{"canonical_id": f"ETF:INCOMPLETE{i:02}:NYSE", "instrument_type": "ETF",
+                       "market": "NYSE", "name": f"Incomplete {i}", "category": "Renta variable",
+                       "exposure": "equity", "quotation_currency": "ARS", "subscription_currency": "ARS",
+                       "economic_currency": None, "minimum": 1, "costs": None, "settlement_days": None,
+                       "liquidity": "unknown", "access": "unknown", "evidence": [], "contradictions": []}
+                      for i in range(20)]
+        source = {"normalized_records": incomplete + [complete_equity("ETF:COMPLETE:NYSE", costs=1)]}
+        result = {**RESULT, "cartera_porcentual": {"Renta variable": 20}}
+        snapshot = {**SNAPSHOT, "perfil": {**SNAPSHOT["perfil"], "acceso": ["local"], "tolerancia": 30, "liquidez": 20}}
+        with tempfile.TemporaryDirectory() as directory:
+            research = research_instruments(result, snapshot, [source], provider=False,
+                store=KnowledgeStore(directory + "/knowledge.db"), limits=ResearchLimits(0, 10, 20), today=date(2026, 10, 29))
+        category = research["categories"][0]
+        self.assertEqual(category["selected_id"], "ETF:COMPLETE:NYSE")
+        self.assertEqual(category["original_id"], "ETF:INCOMPLETE00:NYSE")
+        self.assertEqual(category["comparison"]["original"]["canonical_id"], "ETF:INCOMPLETE00:NYSE")
+        self.assertEqual(category["educational_selection"]["cards"], category["selected"])
+
+    def test_normalized_source_order_permutation_keeps_same_winner(self):
+        records = [complete_equity("ETF:KNOWN:NYSE", costs=4, familiar=True),
+                   complete_equity("ETF:UNFAMILIAR:NYSE", costs=1, familiar=False)]
+        result = {**RESULT, "cartera_porcentual": {"Renta variable": 20}}
+        snapshot = {**SNAPSHOT, "perfil": {**SNAPSHOT["perfil"], "acceso": ["local"], "tolerancia": 30, "liquidez": 20}}
+        selected_ids = []
+        for candidates in (records, list(reversed(records))):
+            with tempfile.TemporaryDirectory() as directory:
+                research = research_instruments(result, snapshot, [{"normalized_records": candidates}], provider=False,
+                    store=KnowledgeStore(directory + "/knowledge.db"), limits=ResearchLimits(0, 10, 10), today=date(2026, 10, 29))
+            selected_ids.append(research["categories"][0]["selected_id"])
+        self.assertEqual(selected_ids, ["ETF:UNFAMILIAR:NYSE", "ETF:UNFAMILIAR:NYSE"])
+
+    def test_periodic_income_objective_alias_is_evaluated_as_renta(self):
+        record = complete_equity("ETF:INCOME:NYSE")
+        result = {**RESULT, "cartera_porcentual": {"Renta variable": 20}}
+        snapshot = {**SNAPSHOT, "perfil": {**SNAPSHOT["perfil"], "objetivo": "Renta periodica",
+            "acceso": ["local"], "tolerancia": 30, "liquidez": 20}}
+        with tempfile.TemporaryDirectory() as directory:
+            research = research_instruments(result, snapshot, [{"normalized_records": [record]}], provider=False,
+                store=KnowledgeStore(directory + "/knowledge.db"), limits=ResearchLimits(0, 10, 10), today=date(2026, 10, 29))
+        category = research["categories"][0]
+        self.assertEqual(snapshot["perfil"]["objetivo"], "Renta periodica")
+        self.assertEqual(category["selected_id"], "ETF:INCOME:NYSE")
+        self.assertNotIn("context.objective", category["evaluated"][0]["missing_fields"])
+
+    def test_normalized_fci_candidates_use_full_query_budget_across_categories(self):
+        categories = (("Renta fija inflación", "inflation", "INFLATION"),
+                      ("Renta fija cambiaria", "fx", "FX"),
+                      ("Liquidez inmediata", "money_market", "CASH"),
+                      ("Renta variable", "equity", "EQUITY"))
+        records = []
+        for category, exposure, short_name in categories:
+            for suffix in ("A", "B"):
+                canonical_id = f"AR:FCI:{short_name}:{suffix}"
+                records.append({"canonical_id": canonical_id, "instrument_type": "FCI", "market": "AR:FCI",
+                    "name": canonical_id, "category": category, "exposure": exposure, "evidence": [],
+                    "contradictions": [], "validation_status": "observed"})
+        class MultiSourceProvider:
+            def __init__(self): self.calls = []
+            def supports(self, record): return record.get("instrument_type") == "FCI"
+            def source_key(self, record): return "https://fixture.example/" + record["canonical_id"].replace(":", "/")
+            def research(self, record, **kwargs):
+                self.calls.append(record["canonical_id"])
+                return {**record, "reference_status": "identity_observed"}
+        result = {**RESULT, "cartera_porcentual": {category: 20 for category, _, _ in categories}}
+        snapshot = {**SNAPSHOT, "perfil": {**SNAPSHOT["perfil"], "acceso": ["local", "international"],
+            "tolerancia": 30, "liquidez": 20}}
+        with tempfile.TemporaryDirectory() as directory:
+            provider = MultiSourceProvider()
+            research = research_instruments(result, snapshot, [{"normalized_records": records}], provider=provider,
+                store=KnowledgeStore(directory + "/knowledge.db"), limits=ResearchLimits(6, 16, 20),
+                today=date(2026, 10, 29))
+        self.assertEqual(research["search"]["queries"], 6)
+        self.assertEqual(len(provider.calls), 6)
+        self.assertLessEqual(research["search"]["queries"], 6)
+        self.assertEqual(len(set(provider.calls)), 6)
+
+    def test_familiarity_does_not_pull_late_api_row_ahead_of_source_pool(self):
         source = {"fuente":"API fixture", "url":"https://example.test/fci", "consultado_en":"2026-10-29T12:00:00+00:00", "fondos": []}
         for i in range(100):
             source["fondos"].append({"nombre":f"A Fondo desconocido {i:03}", "fondoId":str(i+1), "claseId":"1",
@@ -49,19 +147,17 @@ class InstrumentResearchTests(unittest.TestCase):
             provider=FimaProvider()
             research=research_instruments(result, SNAPSHOT, [source], provider=provider,
                 store=KnowledgeStore(directory+"/knowledge.db"), limits=ResearchLimits(1,16,20), today=date(2026,10,29))
-        self.assertTrue(provider.calls)
-        self.assertIn("AR:FCI:68:1", provider.calls)
+        self.assertEqual(provider.calls, [])
         self.assertIn(POLICY_VERSION, research["policy_version"])
         category=research["categories"][0]
-        self.assertEqual(category["educational_selection"]["status"], "REFERENCIA_EDUCATIVA")
+        self.assertEqual(research["schema_version"], 3)
+        self.assertEqual(category["schema_version"], 3)
+        self.assertEqual(category["educational_selection"]["status"], "NO_SELECTION")
         self.assertEqual(category["initial_evaluation"]["original_id"], "AR:FCI:1:1")
         self.assertLessEqual(len(category["educational_selection"]["cards"]),2)
-        self.assertTrue(any("FIMA_RENTA_PESOS" in x.get("education_id", "") for x in category["educational_selection"]["cards"]))
-        fima = next(x for x in category["educational_selection"]["cards"] if x.get("education_id") == "FIMA_RENTA_PESOS")
-        self.assertIsNone(fima.get("minimum"))
-        self.assertIn("minimum", fima.get("missing_fields", []))
+        self.assertEqual(category["educational_selection"]["cards"], category["selected"])
 
-    def test_spy_can_be_an_educational_reference_when_operations_and_currency_are_unknown(self):
+    def test_spy_identity_evidence_does_not_create_selection_when_operations_are_unknown(self):
         class SpyProvider:
             def supports(self, record): return record.get("canonical_id") == "ETF:SPY:NYSE_ARCA"
             def source_key(self, record): return "https://example.test/spy"
@@ -81,10 +177,8 @@ class InstrumentResearchTests(unittest.TestCase):
                 limits=ResearchLimits(6,16,20),today=date(2026,10,29))
         category=research["categories"][0]
         self.assertEqual(category["decision"],"INFORMACION_INSUFICIENTE")
-        card=category["educational_selection"]["cards"][0]
-        self.assertEqual(card["canonical_id"],"ETF:SPY:NYSE_ARCA")
-        self.assertEqual(card["currency_status"],"unknown")
-        self.assertEqual(card["operational_status"],"operación pendiente")
+        self.assertEqual(category["educational_selection"]["cards"], [])
+        self.assertNotIn("ETF:SPY:NYSE_ARCA", [x.get("canonical_id") for x in category["selected"]])
 
     def test_provider_failure_does_not_fallback_to_unresearched_universe(self):
         class FailureProvider:
@@ -96,10 +190,9 @@ class InstrumentResearchTests(unittest.TestCase):
             research=research_instruments(result,SNAPSHOT,[],provider=FailureProvider(),store=KnowledgeStore(directory+"/knowledge.db"),
                 limits=ResearchLimits(6,16,20),today=date(2026,10,29))
         category=research["categories"][0]
-        self.assertEqual(category["educational_selection"]["status"],"SIN_REFERENCIA_VERIFICADA")
+        self.assertEqual(category["educational_selection"]["status"],"NO_SELECTION")
         self.assertEqual(category["educational_selection"]["cards"],[])
-        self.assertTrue(category["educational_selection"]["excluded"])
-        self.assertTrue(any("fuente educativa no respondió" in " ".join(item["reasons"]) for item in category["educational_selection"]["excluded"]))
+        self.assertEqual(category["selected"], [])
 
     def test_provider_researches_fci_and_equity_in_same_bounded_run_without_profile(self):
         source={"fuente":"API fixture","url":"https://example.test/fci","consultado_en":"2026-10-29T12:00:00+00:00","fondos":[
@@ -126,10 +219,11 @@ class InstrumentResearchTests(unittest.TestCase):
                 limits=ResearchLimits(6,16,20),today=date(2026,10,29))
         ids=provider.calls
         self.assertTrue(any(x.startswith("AR:FCI:68:") for x in ids))
-        self.assertIn("ETF:SPY:NYSE_ARCA",ids)
+        self.assertTrue(any(x.startswith(("ETF:", "CEDEAR:", "ADR:", "FOREIGN_SHARE:", "LOCAL_SHARE:")) for x in ids))
         self.assertLessEqual(research["search"]["queries"],6)
+        self.assertEqual(research["categories"][0]["selected"], [])
 
-    def test_default_ars_source_priority_reaches_local_cedears_and_ypf_after_three_fima_urls(self):
+    def test_candidate_research_stays_bounded_and_incomplete_rows_do_not_become_cards(self):
         source={"fuente":"API fixture","url":"https://example.test/fci","consultado_en":"2026-10-29T12:00:00+00:00","fondos":[]}
         for fund_id,name in (("68","Fima Renta en Pesos - Clase A"),("540","Fima Capital Plus - Clase A"),("345","Fima Premium - Clase A")):
             source["fondos"].append({"nombre":name,"fondoId":fund_id,"claseId":"A","fecha":"2026-10-29",
@@ -160,11 +254,9 @@ class InstrumentResearchTests(unittest.TestCase):
             research=research_instruments(result,snapshot,[source],provider=provider,store=KnowledgeStore(directory+"/knowledge.db"),
                 limits=ResearchLimits(),today=date(2026,10,29))
         self.assertEqual(research["search"]["queries"],6)
-        self.assertTrue(any(x.startswith("AR:FCI:68:") for x in provider.calls))
-        self.assertIn("CEDEAR:SPY:BYMA",provider.calls)
-        self.assertIn("CEDEAR:MELI:BYMA",provider.calls)
-        self.assertIn("LOCAL_SHARE:YPFD:BYMA",provider.calls)
-        self.assertNotIn("ETF:SPY:NYSE_ARCA",provider.calls)
+        self.assertEqual(len(provider.calls),6)
+        self.assertTrue(all(category["selected"] == category["educational_selection"]["cards"] for category in research["categories"]))
+        self.assertTrue(all(not category["selected"] for category in research["categories"]))
     def test_shared_source_refresh_counts_once_and_does_not_repeat_failure(self):
         seeds = [r for r in load_universe() if r.get("ticker") == "MELI"]
         class SharedProvider:

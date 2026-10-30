@@ -14,8 +14,8 @@ from .common import fecha_fmt, moneda_fmt
 
 
 def render(result, snapshot):
-    st.markdown("## Instrumentos para entender tu cartera")
-    st.write("Investigamos referencias educativas para explicar cada categoría. No ejecutamos operaciones ni calculamos cantidades para invertir.")
+    st.markdown("## Selección de instrumentos")
+    st.write("Comparamos candidatos con las reglas de esta simulación. Cada selección conserva sus fuentes y los motivos de la decisión.")
 
     saved = result.get("ejemplos_instrumentos")
     if saved is None and not is_result_stale():
@@ -32,12 +32,12 @@ def render(result, snapshot):
 
     research = saved.get("investigacion")
     if not research:
-        st.info("Esta consulta guardada usa un formato anterior. No contiene fichas investigadas; actualizala para ver las referencias educativas.")
+        st.info("Esta consulta anterior no incluye la decisión del motor. Actualizá la investigación para ver la selección de instrumentos.")
         _render_legacy_source_diagnostics(saved)
         return
 
-    if not any("educational_selection" in item for item in research.get("categories", [])):
-        st.info("Esta investigación guardada es anterior al formato de fichas educativas. Actualizala para consultar referencias explicadas por categoría.")
+    if research.get("schema_version") != 3:
+        st.info("Esta consulta anterior mostraba referencias informativas. Actualizá la investigación para obtener la decisión del motor.")
         _render_sources_and_limits(saved, research)
         return
 
@@ -48,11 +48,10 @@ def render(result, snapshot):
         if not isinstance(weight, (int, float)) or isinstance(weight, bool) or weight <= 0:
             continue
         category_research = research_by_category.get(category, {})
-        selection = category_research.get("educational_selection") or {}
-        cards = (selection.get("cards") or [])[:2]
-        count_label = "referencia investigada" if len(cards) == 1 else "referencias investigadas"
-        label = (f"{category} · {weight:g}% · {len(cards)} {count_label}"
-                 if cards else f"{category} · {weight:g}% · Sin una referencia verificada")
+        selected, malformed = _validated_selected(category_research)
+        count_label = "candidato seleccionado" if len(selected) == 1 else "candidatos seleccionados"
+        label = (f"{category} · {weight:g}% · {len(selected)} {count_label}"
+                 if selected else f"{category} · {weight:g}% · Sin selección: faltan datos o revisión")
         with st.expander(label, expanded=False):
             saved_category = legacy_by_category.get(category, {})
             amount = saved_category.get("monto_asignado")
@@ -63,27 +62,23 @@ def render(result, snapshot):
             if amount is not None:
                 st.caption(f"Monto simulado para esta categoría: {moneda_fmt(amount, currency)} {currency}.")
 
-            if cards:
-                selected_ids = {item.get("canonical_id") for item in category_research.get("selected", [])}
-                selected_cards = [card for card in cards if card.get("canonical_id") in selected_ids]
-                if selected_cards:
-                    st.info("Esta referencia coincide con las reglas educativas de la categoría. La operativa real y la idoneidad requieren revisión externa.")
-                else:
-                    st.info("Estas referencias ayudan a entender la categoría; no son selecciones operativas para tu cartera.")
-                original_id = category_research.get("original_id")
-                different = next((card for card in cards if original_id and card.get("canonical_id") != original_id), None)
-                if different:
-                    original = next((item.get("record", {}) for item in category_research.get("evaluated", [])
-                                     if item.get("canonical_id") == original_id), {})
-                    if original.get("name"):
-                        with st.expander("Cómo se eligieron estas referencias", expanded=False):
-                            st.text(f"La referencia inicial era {original['name']}; se muestra {different.get('name') or different.get('canonical_id')} como explicación educativa, no como reemplazo de la asignación.")
-                for index, card in enumerate(cards):
-                    _render_card(card, currency, research, category, index)
+            if malformed:
+                st.warning("La investigación contiene una selección que no coincide con una evaluación elegible. No se muestra esa ficha.")
+            if selected:
+                comparison = category_research.get("comparison") or {}
+                if comparison.get("reason"):
+                    st.info(str(comparison["reason"]))
+                for index, candidate in enumerate(selected[:2]):
+                    record = candidate.get("record", {})
+                    if candidate.get("reason"):
+                        st.text(str(candidate["reason"]))
+                    elif candidate.get("reasons"):
+                        st.text(_join_reasons(candidate["reasons"]))
+                    _render_card(record, currency, research, category, index, candidate)
+                _render_comparison(category_research)
             else:
-                _render_no_reference(selection)
+                _render_no_selection(category_research)
 
-    _render_bitcoin_library(research)
     _render_sources_and_limits(saved, research)
 
 
@@ -100,25 +95,56 @@ def _query_and_freeze(result, snapshot, previous):
     return saved
 
 
-def _render_card(card, currency, research, category, index):
+def _validated_selected(category_research):
+    evaluated = category_research.get("evaluated") or []
+    selected = category_research.get("selected") or []
+    valid = []
+    malformed = False
+    blocked_category_decisions = {"EXCLUIR_CANDIDATO", "REQUIERE_REVISION", "INFORMACION_INSUFICIENTE", "AMPLIAR_BUSQUEDA"}
+    if str(category_research.get("decision", "")).upper() in blocked_category_decisions:
+        return [], bool(selected)
+    for record in selected:
+        canonical_id = record.get("canonical_id") if isinstance(record, dict) else None
+        decision = next((item for item in evaluated if item.get("canonical_id") == canonical_id), None)
+        if (not canonical_id or not decision or decision.get("eligible") is not True
+                or decision.get("decision") != "CONSERVAR_CANDIDATO"
+                or decision.get("missing_fields") or not isinstance(decision.get("record"), dict)):
+            malformed = True
+            continue
+        valid.append(decision)
+    return valid, malformed
+
+
+def _render_card(card, currency, research, category, index, evaluation):
     with st.container(border=True):
         name = card.get("name") or card.get("canonical_id") or "Instrumento sin nombre"
         st.markdown(f"<h3>{escape(_display_name(card))}</h3>", unsafe_allow_html=True)
         st.text(f"{_type_label(card.get('instrument_type'))} · {card.get('market') or 'mercado no confirmado'}")
-        description = card.get("educational_description") or _what_is(card)
+        description = card.get("educational_description") or card.get("description") or _what_is(card)
         st.text(description)
 
-        currency_status = _currency_status(card.get("currency_status"), card)
-        operational_status = _operational_status(card.get("operational_status"))
-        st.text(f"Moneda: {currency_status} · Operativa: {operational_status}")
+        currency_status = _selected_currency_status(card, currency)
+        st.text(f"Moneda: {currency_status} · Operativa: condiciones evaluadas por el motor; disponibilidad por intermediario sin confirmar")
 
-        missing = card.get("missing_fields") or []
-        if missing or card.get("reason"):
+        missing = evaluation.get("missing_fields", []) or []
+        if missing or evaluation.get("reason") or evaluation.get("reasons"):
             with st.expander("Qué se verificó y qué falta antes de operar", expanded=False):
-                if card.get("reason"):
-                    st.text(card["reason"])
+                if evaluation.get("reason"):
+                    st.text(evaluation["reason"])
+                elif evaluation.get("reasons"):
+                    st.text(_join_reasons(evaluation["reasons"]))
                 if missing:
                     st.text("Por confirmar: " + ", ".join(_field_label(field) for field in missing) + ".")
+                if card.get("minimum") is not None:
+                    st.text(f"Mínimo publicado: {card['minimum']} {card.get('currency') or currency}.")
+                if card.get("settlement_days") is not None:
+                    st.text(f"Plazo de liquidación informado: {card['settlement_days']} días.")
+                holdings = card.get("holdings_details") or []
+                if holdings:
+                    st.text("Composición informada (no necesariamente vigente): " + "; ".join(
+                        f"{item.get('name')}: {item.get('weight')}%" for item in holdings if isinstance(item, dict)))
+                    if card.get("holdings_date"):
+                        st.caption(f"Fecha de composición informada: {card['holdings_date']}.")
         if card.get("risks"):
             st.text("Riesgos: " + "; ".join(str(x) for x in card["risks"][:3]))
 
@@ -145,42 +171,84 @@ def _render_card(card, currency, research, category, index):
                 st.warning("No se pudo guardar la señal local.")
 
 
-def _render_no_reference(selection):
-    excluded = selection.get("excluded") or []
-    familiar = next((item for item in excluded if item.get("familiar") is True), None)
-    if familiar:
-        name = familiar.get("name") or familiar.get("canonical_id")
-        reason = _join_reasons(familiar.get("reasons") or selection.get("reasons") or [])
-        st.text(f"Investigamos {name}, pero no podemos presentarlo como referencia verificada para esta categoría. {reason}")
-    elif selection.get("reasons"):
-        st.text(_join_reasons(selection["reasons"]))
-    else:
-        st.info("No encontramos una referencia educativa verificada para esta categoría.")
-    if selection.get("excluded") and not familiar:
-        with st.expander("Por qué no se muestra una referencia"):
-            st.write(_join_reasons(selection.get("reasons") or []))
+def _render_no_selection(category_research):
+    evaluated = category_research.get("evaluated") or []
+    eligible_count = sum(item.get("eligible") is True for item in evaluated)
+    excluded_count = sum(str(item.get("decision", "")).upper() == "EXCLUIR_CANDIDATO" for item in evaluated)
+    pending = [item for item in evaluated if item.get("eligible") is not True
+               and str(item.get("decision", "")).upper() != "EXCLUIR_CANDIDATO"]
+    st.warning("El motor no seleccionó un instrumento para esta categoría. Esta simulación no emite una recomendación cuando faltan datos o hace falta revisión.")
+    st.caption(f"Analizados: {len(evaluated)} · elegibles: {eligible_count} · excluidos: {excluded_count} · pendientes de revisión: {len(pending)}.")
+    missing = []
+    reasons = []
+    for item in evaluated:
+        missing.extend(item.get("missing_fields") or [])
+        reasons.extend(item.get("reasons") or [])
+        if item.get("reason"):
+            reasons.append(item["reason"])
+    if missing:
+        st.text("Datos faltantes: " + ", ".join(_field_label(value) for value in dict.fromkeys(missing)) + ".")
+    search = category_research.get("search") or {}
+    coverage = search.get("coverage") or category_research.get("coverage") or {}
+    if coverage:
+        source_count = coverage.get("sources") or coverage.get("source_count")
+        markets = coverage.get("markets") or coverage.get("market_count")
+        details = []
+        if source_count is not None:
+            details.append(f"fuentes consultadas: {source_count}")
+        if markets is not None:
+            details.append(f"mercados cubiertos: {markets}")
+        if details:
+            st.caption("Cobertura: " + " · ".join(map(str, details)) + ".")
+    if reasons:
+        with st.expander("Motivos y candidatos revisados", expanded=False):
+            for item in evaluated:
+                record = item.get("record") or {}
+                name = record.get("name") or item.get("canonical_id") or "Candidato"
+                st.text(f"{name}: {_join_reasons(item.get('reasons') or ([item['reason']] if item.get('reason') else []))}")
+                if item.get("missing_fields"):
+                    st.caption("Por confirmar: " + ", ".join(_field_label(value) for value in item["missing_fields"]) + ".")
 
 
-def _render_bitcoin_library(research):
-    crypto = [item for item in research.get("educational_universe", [])
-              if item.get("instrument_type") in ("CRYPTO", "CRYPTO_FUND")]
-    if not crypto:
+def _render_comparison(category_research):
+    comparison = category_research.get("comparison") or {}
+    original = comparison.get("original") or {}
+    alternative = comparison.get("alternative") or {}
+    if not original and not alternative:
         return
-    with st.expander("Conocer Bitcoin y sus vehículos (sin asignación)", expanded=False):
-        st.caption("Bitcoin y un fondo cotizado con exposición a Bitcoin son vehículos distintos. Esta sección no modifica la cartera simulada.")
-        for item in crypto:
-            st.text(item.get("name") or item.get("canonical_id"))
-            st.text(item.get("educational_description") or item.get("description") or _what_is(item))
-            st.caption("Identidad/negociación disponible: " + _availability_label(item.get("availability")) + ".")
-            for evidence in item.get("evidence", [])[:1]:
-                url = _https_url(evidence.get("url"))
-                if url:
-                    st.link_button("Consultar fuente sobre Bitcoin", url)
+    with st.expander("Comparación y factores de decisión", expanded=False):
+        for label, candidate in (("Candidato original", original), ("Candidato seleccionado", alternative)):
+            if not candidate:
+                continue
+            record = candidate.get("record") or {}
+            name = record.get("name") or candidate.get("canonical_id") or label
+            st.text(f"{label}: {name} · {candidate.get('decision') or 'estado no informado'}.")
+            factors = candidate.get("ranking_factors") or {}
+            if factors:
+                st.text("Factores: " + ", ".join(f"{_factor_label(key)} {value}" for key, value in factors.items()) + ".")
+        if comparison.get("reason"):
+            st.caption(str(comparison["reason"]))
+
+
+def _factor_label(value):
+    return {"riesgo": "riesgo", "operacion": "operación", "diversificacion": "diversificación",
+            "costos": "costos", "familiaridad": "familiaridad"}.get(value, value.replace("_", " "))
 
 
 def _render_sources_and_limits(saved, research):
     with st.expander("Fuentes, actualización y detalle de la investigación", expanded=False):
         st.caption(f"Consulta: {fecha_fmt(saved.get('consultado_en'))} · versión de política {research.get('policy_version')} · universo {research.get('universe_version')}.")
+        for coverage in research.get("source_coverage", []):
+            if not isinstance(coverage, dict):
+                continue
+            source_name = coverage.get("source") or "Fuente consultada"
+            st.text(f"Cobertura de {source_name}: {coverage.get('candidate_count', 0)} candidatos · "
+                    f"clases {', '.join(coverage.get('classes') or []) or 'no informadas'}.")
+            url = _https_url(coverage.get("url"))
+            if url:
+                st.link_button("Consultar fuente de cobertura", url)
+            if coverage.get("published_at"):
+                st.caption(f"Publicación informada: {coverage['published_at']}.")
         for error in saved.get("errores_fuente", []) + research.get("search", {}).get("errors", []):
             st.text(str(error))
         for source in saved.get("fuentes", []):
@@ -190,17 +258,21 @@ def _render_sources_and_limits(saved, research):
                 st.link_button("Ver publicación del catálogo", url)
         seen = set()
         for category in research.get("categories", []):
-            selection = category.get("educational_selection") or {}
-            for card in selection.get("cards", []):
-                for evidence in card.get("evidence", []):
+            for candidate in category.get("selected", []):
+                evaluated = next((item for item in category.get("evaluated", [])
+                                  if item.get("canonical_id") == candidate.get("canonical_id") and item.get("eligible") is True), None)
+                if not evaluated:
+                    continue
+                record = evaluated.get("record") or {}
+                for evidence in record.get("evidence", []):
                     url = _https_url(evidence.get("url"))
                     if not url or url in seen:
                         continue
                     seen.add(url)
-                    st.text(str(evidence.get("source") or card.get("name") or "Referencia del instrumento"))
-                    st.link_button("Ver referencia del instrumento", url)
+                    st.text(str(evidence.get("source") or record.get("name") or "Fuente del candidato seleccionado"))
+                    st.link_button("Ver fuente del candidato", url)
                     st.caption(f"Observada: {fecha_fmt(evidence.get('observed_at')) if evidence.get('observed_at') else 'fecha no informada'} · contenido {evidence.get('data_date') or 'sin fecha'}")
-        st.json(research)
+        st.json(research, expanded=False)
 
 
 def _render_legacy_source_diagnostics(saved):
@@ -277,26 +349,14 @@ def _what_is(record):
                 record.get("instrument_type"), "No hay información suficiente para explicar este vehículo.")
 
 
-def _currency_status(value, card):
-    if value == "match":
+def _selected_currency_status(card, currency):
+    quotation = card.get("quotation_currency")
+    subscription = card.get("subscription_currency")
+    if quotation == currency and subscription == currency:
         return "coincide con la simulación"
-    if value == "not_applicable":
-        return "no corresponde a esta comprobación"
-    if value in (None, "", "unknown", "unverified"):
-        return f"sin confirmar ({card.get('quotation_currency') or 'cotización no informada'} / {card.get('subscription_currency') or 'suscripción no informada'})"
-    return str(value)
-
-
-def _operational_status(value):
-    if value in (None, "", "unknown", "unverified"):
-        return "pendiente de confirmar"
-    return str(value)
-
-
-def _availability_label(value):
-    return {"identity_confirmed": "identidad observada en la fuente", "source_unavailable": "fuente no disponible",
-            "reference_unsupported": "sin fuente para esta referencia",
-            "curated_reference_not_checked": "referencia no consultada"}.get(value, "requiere confirmación")
+    if not quotation or not subscription:
+        return "sin confirmar (cotización o suscripción no informada)"
+    return f"sin confirmar ({quotation} / {subscription})"
 
 
 def _join_reasons(reasons):

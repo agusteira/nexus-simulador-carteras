@@ -260,124 +260,36 @@ class InstrumentRuleTests(unittest.TestCase):
         self.assertTrue(out["eligible"])
         self.assertEqual(rank_candidates([c], ctx(), today=TODAY)[0]["decision"], "CONSERVAR_CANDIDATO")
         education = build_educational_selection([c], ctx(), today=TODAY)
-        self.assertEqual(education["cards"][0]["canonical_id"], c["canonical_id"])
+        self.assertEqual(education["cards"], [c])
+        self.assertEqual(education["status"], "SELECTED_BY_RULES")
 
-    def test_education_card_is_not_financial_eligibility_and_currency_match_ranks_first(self):
-        unknown = candidate(canonical_id="ETF:UNKNOWN:NYSE", underlying_id="INDEX:UNKNOWN")
-        unknown["evidence"] = [ev for ev in unknown["evidence"] if not ("quotation_currency" in ev["fields"] or "subscription_currency" in ev["fields"])]
-        matched = candidate(canonical_id="ETF:MATCH:NYSE", underlying_id="INDEX:MATCH", familiar=False, familiarity_basis=None)
-        result = build_educational_selection([unknown, matched], ctx(), today=TODAY)
-        self.assertEqual(result["status"], "REFERENCIA_EDUCATIVA")
-        self.assertEqual(result["cards"][0]["canonical_id"], "ETF:MATCH:NYSE")
-        self.assertEqual(result["cards"][0]["currency_status"], "match")
-        self.assertNotIn("eligible", result["cards"][0])
+    def test_evidence_and_costs_outweigh_familiarity_and_budget_changes_winner(self):
+        known = candidate(canonical_id="ETF:FAMILIAR:NYSE", underlying_id="INDEX:FAMILIAR",
+                          minimum=1, costs=2, familiar=True, familiarity_basis="known example")
+        unknown = candidate(canonical_id="ETF:UNFAMILIAR:NYSE", underlying_id="INDEX:UNFAMILIAR",
+                            minimum=80, costs=0, familiar=False, familiarity_basis=None)
+        broad_budget = decide_category([known, unknown], ctx(budget=100), today=TODAY)
+        limited_budget = decide_category([known, unknown], ctx(budget=50), today=TODAY)
+        self.assertEqual(broad_budget["selected_id"], "ETF:UNFAMILIAR:NYSE")
+        self.assertEqual(limited_budget["selected_id"], "ETF:FAMILIAR:NYSE")
+        self.assertTrue(next(x for x in limited_budget["evaluated"]
+                             if x["canonical_id"] == "ETF:UNFAMILIAR:NYSE")["decision"] == "EXCLUIR_CANDIDATO")
 
-    def test_known_currency_mismatch_and_crypto_are_excluded_from_education(self):
-        wrong = candidate(quotation_currency="EUR", subscription_currency="EUR")
-        crypto = candidate(canonical_id="CRYPTO_FUND:BTC:NASDAQ", instrument_type="CRYPTO_FUND", exposure="bitcoin")
-        result = build_educational_selection([wrong, crypto], ctx(), today=TODAY)
-        self.assertEqual(result["status"], "SIN_REFERENCIA_VERIFICADA")
-        self.assertEqual(len(result["cards"]), 0)
-        self.assertTrue(any("R_MONEDA_INCOMPATIBLE" in item["rule_ids"] for item in result["excluded"]))
-        self.assertTrue(any("R_CRYPTO_POLICY" in item["rule_ids"] for item in result["excluded"]))
+    def test_selected_candidate_is_invariant_to_candidate_order(self):
+        records = [candidate(canonical_id="ETF:COSTLY:NYSE", underlying_id="INDEX:COSTLY", costs=5),
+                   candidate(canonical_id="ETF:CHEAP:NYSE", underlying_id="INDEX:CHEAP", costs=1,
+                             familiar=False, familiarity_basis=None)]
+        left = decide_category(records, ctx(), today=TODAY)
+        right = decide_category(list(reversed(records)), ctx(), today=TODAY)
+        self.assertEqual(left["selected_id"], "ETF:CHEAP:NYSE")
+        self.assertEqual(left["selected_id"], right["selected_id"])
 
-    def test_curated_fixed_hint_does_not_verify_category_or_exposure(self):
-        r = {"canonical_id":"FCI:FIXED:CLASSA", "instrument_type":"FCI", "market":"AR:FCI", "name":"Fondo CER Pesos",
-             "category":None, "exposure":"unknown", "category_hint":"Renta fija inflación", "exposure_hint":"inflation",
-             "familiar":True, "familiarity_basis":"curated cue", "validation_status":"observed", "contradictions":[], "evidence":[]}
-        evidence_for(r, ["canonical_id", "instrument_type", "market", "name"])
-        r["evidence"].append({"source":"curated", "url":"https://example.invalid/catalog", "fields":{"category_hint":"Renta fija inflación", "exposure_hint":"inflation"},
-                              "observed_at":"2026-10-29T12:00:00+00:00", "data_date":None, "expires_at":None, "kind":"curated"})
-        result = build_educational_selection([r], ctx(category="Renta fija inflación"), today=TODAY)
-        self.assertEqual(result["status"], "SIN_REFERENCIA_VERIFICADA")
-
-    def test_primary_mandate_research_outranks_catalog_minimum_and_familiarity(self):
-        fields = ["canonical_id", "instrument_type", "market", "name", "category", "exposure",
-                  "quotation_currency", "subscription_currency"]
-        primary = {"canonical_id":"AR:FCI:FIMA:1", "instrument_type":"FCI", "market":"AR:FCI", "name":"Fima Renta en Pesos - Clase A",
-            "category":"Renta fija inflación", "exposure":"inflation", "quotation_currency":"ARS", "subscription_currency":"ARS",
-            "economic_currency":None, "minimum":None, "costs":None, "settlement_days":None, "liquidity":"unknown", "access":"unknown",
-            "exposure_basis":"mandate",
-            "education_id":"FIMA_RENTA_PESOS", "educational_description":"Mandato CER con cartera cambiante.",
-            "familiar":True, "familiarity_basis":"familia conocida", "validation_status":"observed", "contradictions":[], "evidence":[]}
-        evidence_for(primary, fields)
-        for ev in primary["evidence"]:
-            if "category" in ev["fields"] or "exposure" in ev["fields"]:
-                ev["source"]="Fima issuer mandate"; ev["url"]="https://www.fondosfima.com.ar/fima.model.json"
-                ev["source_type"]="issuer"; ev["scope"]="mandate"
-        generic = deepcopy(primary)
-        generic.update({"canonical_id":"AR:FCI:GENERIC:1", "name":"Fondo renta fija genérico", "education_id":None,
-                        "educational_description":None, "familiar":False, "familiarity_basis":None, "minimum":1})
-        generic["evidence"]=[]
-        evidence_for(generic, fields + ["minimum"])
-        context=ctx(category="Renta fija inflación", currency="ARS", allocation_weight=50)
-        result=build_educational_selection([generic,primary],context,today=TODAY)
-        self.assertEqual(result["cards"][0]["education_id"],"FIMA_RENTA_PESOS")
-        self.assertEqual(result["cards"][0]["reference_source_quality"],"issuer_mandate")
-        self.assertEqual(result["cards"][0]["exposure_status"],"mandate_only")
-        self.assertIn("actual_exposure_or_holdings",result["cards"][0]["missing_fields"])
-        self.assertEqual(len(result["cards"]),1)
-
-    def test_catalog_classification_without_primary_explanation_is_not_a_reference(self):
-        catalog={"canonical_id":"AR:FCI:CATALOG:1", "instrument_type":"FCI", "market":"AR:FCI", "name":"Money market genérico",
-            "category":"Liquidez inmediata", "exposure":"money_market", "quotation_currency":"ARS", "subscription_currency":"ARS",
-            "minimum":1, "costs":None, "settlement_days":0, "liquidity":"immediate", "access":"unknown",
-            "reference_status":"source_unavailable", "validation_status":"observed", "contradictions":[], "evidence":[]}
-        evidence_for(catalog,["canonical_id","instrument_type","market","name","category","exposure","quotation_currency","subscription_currency","minimum","settlement_days","liquidity"])
-        result=build_educational_selection([catalog],ctx(category="Liquidez inmediata",currency="ARS"),today=TODAY)
-        self.assertEqual(result["status"],"SIN_REFERENCIA_VERIFICADA")
-        self.assertIn("R_REFERENCIA_EXPEDIENTE_BASICO",result["excluded"][0]["rule_ids"])
-        self.assertIn("fuente primaria no respondió", " ".join(result["excluded"][0]["reasons"]))
-
-    def test_strict_financial_candidate_stays_ahead_of_primary_educational_reference(self):
-        primary = {"canonical_id":"AR:FCI:FIMA:1", "instrument_type":"FCI", "market":"AR:FCI", "name":"Fima Renta en Pesos",
-            "category":"Renta variable", "exposure":"equity", "quotation_currency":"USD", "subscription_currency":"USD",
-            "economic_currency":"USD", "minimum":1, "costs":0, "settlement_days":1, "liquidity":"daily", "access":"local",
-            "education_id":"FIMA_RENTA_PESOS", "exposure_basis":"mandate", "familiar":True, "familiarity_basis":"catalog", "validation_status":"observed",
-            "contradictions":[], "evidence":[]}
-        evidence_for(primary,["canonical_id","instrument_type","market","name","category","exposure","quotation_currency",
-            "subscription_currency","economic_currency","minimum","costs","settlement_days","liquidity","access","exposure_basis"])
-        for ev in primary["evidence"]:
-            if "category" in ev["fields"] or "exposure" in ev["fields"]:
-                ev["source"]="issuer"; ev["url"]="https://www.fondosfima.com.ar/fima.model.json"
-                ev["source_type"]="issuer"; ev["scope"]="mandate"
-        strict = candidate(familiar=False, familiarity_basis=None)
-        context=ctx(category="Renta variable", currency="USD", allocation_weight=20, horizon_months=60)
-        result=build_educational_selection([primary,strict],context,today=TODAY)
-        self.assertEqual(result["cards"][0]["canonical_id"],strict["canonical_id"])
-        self.assertEqual(evaluate_candidate(primary,context,today=TODAY)["decision"],"INFORMACION_INSUFICIENTE")
-
-    def test_primary_depositary_classification_can_beat_catalog_currency_match_educationally(self):
-        local_cedear={"canonical_id":"CEDEAR:SPY:BYMA","instrument_type":"CEDEAR","ticker":"SPY","market":"BYMA","name":"CEDEAR SPY",
-            "category":"Renta variable","exposure":"equity","quotation_currency":None,"subscription_currency":None,
-            "familiar":True,"familiarity_basis":"curated","validation_status":"observed","contradictions":[],"evidence":[]}
-        # Caja confirms stable ID/type/market and classification, but does not
-        # publish the UI display name; identity still remains verifiable.
-        fields=["canonical_id","instrument_type","ticker","market","category","exposure"]
-        evidence_for(local_cedear,fields)
-        for ev in local_cedear["evidence"]:
-            if "category" in ev["fields"] or "exposure" in ev["fields"]:
-                ev["source_type"]="depositary"; ev["scope"]="identity"; ev["source"]="Caja"
-                ev["url"]="https://cajadevalores.com.ar/Servicios/Cedears"
-        catalog={"canonical_id":"AR:FCI:GENERIC:1","instrument_type":"FCI","market":"AR:FCI","name":"Fondo renta variable catálogo",
-            "category":"Renta variable","exposure":"equity","quotation_currency":"ARS","subscription_currency":"ARS",
-            "minimum":1,"familiar":False,"validation_status":"observed","contradictions":[],"evidence":[]}
-        evidence_for(catalog,["canonical_id","instrument_type","market","name","category","exposure","quotation_currency","subscription_currency","minimum"])
-        context=ctx(category="Renta variable",currency="ARS",allocation_weight=20)
-        result=build_educational_selection([catalog,local_cedear],context,today=TODAY)
-        self.assertEqual(result["cards"][0]["canonical_id"],"CEDEAR:SPY:BYMA")
-        self.assertEqual(result["cards"][0]["reference_source_quality"],"depositary")
-        self.assertEqual(result["cards"][0]["currency_status"],"unknown")
-        self.assertFalse(evaluate_candidate(local_cedear,context,today=TODAY)["eligible"])
-
-    def test_ticker_only_candidate_is_not_an_educational_reference(self):
-        record={"ticker":"SPY","name":"SPY","instrument_type":"ETF","market":"unknown",
-                "canonical_id":None,"category":"Renta variable","exposure":"equity","validation_status":"proposal",
-                "contradictions":[],"evidence":[{"source":"curated","url":"https://example.invalid/catalog",
-                    "fields":{"ticker":"SPY","name":"SPY","category":"Renta variable","exposure":"equity"},
-                    "observed_at":"2026-10-29T12:00:00+00:00","data_date":None,"expires_at":None,"kind":"curated"}]}
-        result=build_educational_selection([record],ctx(),today=TODAY)
-        self.assertEqual(result["status"],"SIN_REFERENCIA_VERIFICADA")
+    def test_educational_compatibility_projection_has_no_cards_when_strict_gate_fails(self):
+        incomplete = candidate()
+        incomplete["evidence"] = []
+        result = build_educational_selection([incomplete], ctx(), today=TODAY)
+        self.assertEqual(result["status"], "NO_SELECTION")
+        self.assertEqual(result["cards"], [])
 
 
 if __name__ == "__main__":

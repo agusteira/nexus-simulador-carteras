@@ -6,7 +6,7 @@ from time import monotonic
 
 from .instrument_knowledge import UNIVERSE_VERSION, KnowledgeStore, load_universe, normalize_fund
 from .instrument_providers import MarketDataError, ReferenceProvider
-from .instrument_rules import POLICY_VERSION, _evidence, _finite_num, build_educational_selection, decide_category
+from .instrument_rules import POLICY_VERSION, _evidence, _finite_num, decide_category, rank_candidates
 
 
 @dataclass(frozen=True)
@@ -23,8 +23,11 @@ class ResearchLimits:
 
 def _profile_context(snapshot, result, category, budget, weight, already_selected):
     profile = snapshot.get("perfil") or {}
+    objective = profile.get("objetivo")
+    if objective == "Renta periodica":
+        objective = "Renta"
     return {"category": category, "profile": result.get("perfil_riesgo"),
-            "horizon_months": profile.get("horizonte"), "objective": profile.get("objetivo"),
+            "horizon_months": profile.get("horizonte"), "objective": objective,
             "budget": budget, "allocation_weight": weight, "tolerance": profile.get("tolerancia"),
             "currency": result.get("moneda", profile.get("moneda")),
             "liquidity_required": profile.get("liquidez"), "allowed_access": profile.get("acceso"),
@@ -32,42 +35,37 @@ def _profile_context(snapshot, result, category, budget, weight, already_selecte
 
 
 def _source_records(catalogs, today, max_results):
-    # Keep a bounded pool for each source category. Do not let alphabetical order
-    # consume the entire research budget with a single class.
     pools, omitted, originals = {}, {}, {}
     for source in catalogs:
-        for fund in source.get("fondos", []):
+        candidates = []
+        for record in source.get("normalized_records", []) if isinstance(source, dict) else []:
+            canonical_id = record.get("canonical_id") if isinstance(record, dict) else None
+            if isinstance(canonical_id, str) and canonical_id.strip() == canonical_id and ":" in canonical_id:
+                candidates.append((deepcopy(record), None))
+        for fund in source.get("fondos", []) if isinstance(source, dict) else []:
             try:
                 record = normalize_fund(fund, source, today=today)
             except (TypeError, ValueError):
                 continue
+            candidates.append((record, fund.get("tipoRenta")))
+        for record, legacy_type in candidates:
             category = record.get("category")
             hint = record.get("category_hint")
-            applicable = ([category] if category else ([hint] if hint in ("Renta fija inflación", "Renta fija cambiaria", "Renta variable", "Liquidez inmediata")
-                          else (["Renta fija inflación", "Renta fija cambiaria"]
-                                if str(fund.get("tipoRenta", "")).casefold() in ("renta fija", "fija") else [])))
+            if category:
+                applicable = [category]
+            elif hint in ("Renta fija inflación", "Renta fija cambiaria", "Renta variable", "Liquidez inmediata"):
+                applicable = [hint]
+            elif record.get("instrument_type") == "FCI" and str(legacy_type or "").casefold() in ("renta fija", "fija"):
+                # The legacy catalog's broad fixed-income class can enter either
+                # fixed-income comparison; this is a source hint, not evidence.
+                applicable = ["Renta fija inflación", "Renta fija cambiaria"]
+            else:
+                applicable = []
             for target in applicable:
                 pools.setdefault(target, []).append(record)
                 originals.setdefault(target, deepcopy(record))
-    # Scan every normalized row before applying the per-category investigation cap.
     for target, pool in pools.items():
-        pool.sort(key=lambda r: (0 if r.get("education_id") else 1,
-                                 0 if r.get("familiar") and r.get("familiarity_basis") else 1,
-                                 0 if (r.get("name") or "").casefold().strip().endswith(("clase a", "-a", " a")) else 1,
-                                 str(r.get("canonical_id") or "")))
-        if len(pool) > max_results:
-            omitted[target] = len(pool) - max_results
-            unknown = [r for r in pool if not r.get("education_id")]
-            known_family = [r for r in pool if r.get("education_id")]
-            reserve_unknown = min(4, max_results, len(unknown))
-            selected = known_family[:max_results-reserve_unknown] + unknown[:reserve_unknown]
-            selected_ids = {r.get("canonical_id") for r in selected}
-            selected.extend(r for r in pool if r.get("canonical_id") not in selected_ids)
-            selected = selected[:max_results]
-            original = originals.get(target)
-            if original and all(r.get("canonical_id") != original.get("canonical_id") for r in selected) and selected:
-                selected[-1] = original
-            pools[target] = selected
+        omitted[target] = max(0, len(pool) - max_results)
     return pools, omitted, originals
 
 
@@ -158,7 +156,6 @@ def research_instruments(result, snapshot, catalogs, *, refresh=False, today=Non
     query_sources = set()
     failed_sources = set()
     raw_categories = result.get("cartera_porcentual", {})
-    reserve_equity_sources = 3 if raw_categories.get("Renta variable", 0) > 0 and limits.max_queries >= 6 else 0
     def investigate(candidate, cached=None, force=False):
         nonlocal query_count, initial_query_count
         candidate = deepcopy(candidate)
@@ -177,9 +174,7 @@ def research_instruments(result, snapshot, catalogs, *, refresh=False, today=Non
                 source_key = provider.source_key(candidate) if hasattr(provider, "source_key") else None
                 counts_as_query = source_key not in query_sources if source_key else True
                 remaining = min(4, max(0, limits.max_seconds - (clock() - started)))
-                fci_ceiling = limits.max_queries - reserve_equity_sources
-                reserve_fci = counts_as_query and candidate.get("instrument_type") == "FCI" and query_count >= fci_ceiling
-                if (counts_as_query and query_count >= limits.max_queries) or reserve_fci or remaining <= 0:
+                if (counts_as_query and query_count >= limits.max_queries) or remaining <= 0:
                     candidate["reference_status"] = "not_checked"
                 elif source_key and source_key in failed_sources:
                     candidate["reference_status"] = "source_unavailable"
@@ -230,6 +225,27 @@ def research_instruments(result, snapshot, catalogs, *, refresh=False, today=Non
     category_order = list(raw_categories)
     category_position = {category: index for index, category in enumerate(category_order)}
     category_order.sort(key=lambda c: (c == "Renta variable", category_position[c]))
+    def candidate_priority(candidate, context, evaluated=None):
+        if evaluated is None:
+            evaluated = rank_candidates([candidate], context, today=today)[0]
+        record = evaluated["record"]
+        strict_state = evaluated["decision"]
+        # Excluded and contradictory records remain auditable, but should not
+        # consume scarce source queries while potentially eligible records exist.
+        state_rank = 0 if evaluated["eligible"] else (1 if strict_state == "INFORMACION_INSUFICIENTE" else 2)
+        missing = len(evaluated["missing_fields"])
+        currency_match = (record.get("quotation_currency") == context.get("currency")
+                          and record.get("subscription_currency") == context.get("currency")
+                          and bool(_evidence(record, "quotation_currency", today or datetime.now(timezone.utc).date(), 30))
+                          and bool(_evidence(record, "subscription_currency", today or datetime.now(timezone.utc).date(), 30)))
+        category_match = (record.get("category") == context.get("category")
+                          and bool(_evidence(record, "category", today or datetime.now(timezone.utc).date(), 30))
+                          and bool(_evidence(record, "exposure", today or datetime.now(timezone.utc).date(), 30)))
+        factors = evaluated["ranking_factors"]
+        return (state_rank, missing, 0 if category_match else 1, 0 if currency_match else 1,
+                factors["riesgo"], factors["operacion"], factors["diversificacion"], factors["costos"],
+                str(record.get("canonical_id") or ""))
+
     for category in category_order:
         weight = raw_categories[category]
         if not isinstance(weight, (int, float)) or isinstance(weight, bool) or weight <= 0:
@@ -237,21 +253,11 @@ def research_instruments(result, snapshot, catalogs, *, refresh=False, today=Non
         budget = result.get("capital", (snapshot.get("perfil") or {}).get("capital", 0)) * weight / 100
         context = _profile_context(snapshot, result, category, budget, weight, selected_records)
         initial_candidates = list(source_pools.get(category, []))
-        def initial_priority(candidate):
-            minimum = candidate.get("minimum")
-            minimum_backed = _finite_num(minimum) and bool(_evidence(candidate, "minimum", today or datetime.now(timezone.utc).date(), 7 if candidate.get("instrument_type") == "FCI" else 30))
-            unaffordable = minimum_backed and _finite_num(budget) and budget < minimum
-            observed_class = bool(_evidence(candidate, "category", today or datetime.now(timezone.utc).date(), 30)
-                                  and _evidence(candidate, "exposure", today or datetime.now(timezone.utc).date(), 30)
-                                  and candidate.get("category") == category)
-            hinted_class = candidate.get("category_hint") == category
-            class_a = 0 if (candidate.get("name") or "").casefold().strip().endswith(("clase a", "-a", " a")) else 1
-            return (1 if unaffordable else 0, 0 if observed_class else (1 if hinted_class else 2),
-                    0 if candidate.get("education_id") else 1, class_a, str(candidate.get("canonical_id") or ""))
-        initial_candidates.sort(key=initial_priority)
+        initial_ranked = rank_candidates(initial_candidates, context, today=today)
+        initial_evaluations = {item.get("canonical_id"): item for item in initial_ranked}
+        initial_candidates.sort(key=lambda candidate: candidate_priority(
+            candidate, context, initial_evaluations.get(candidate.get("canonical_id"))))
         original_record = source_originals.get(category)
-        if limits.max_results > 0 and original_record and all(x.get("canonical_id") != original_record.get("canonical_id") for x in initial_candidates):
-            initial_candidates[-1:] = [original_record]
         initial = initial_candidates[:limits.max_results]
         initial = [investigate(record, cached_record(record), force=True) for record in initial]
         for record in initial:
@@ -259,37 +265,24 @@ def research_instruments(result, snapshot, catalogs, *, refresh=False, today=Non
         # FCI evidence often supports identity only; every rule evaluation remains
         # explicit about unverified operational and exposure facts.
         records = list(initial)
-        original_id = original_record.get("canonical_id") if original_record else (initial[0].get("canonical_id") if initial else None)
+        original_id = original_record.get("canonical_id") if original_record else None
         initial_decision = decide_category(records, context, original_id=original_id,
                                            can_expand=False, today=today)
+        if original_id and original_record and all(x.get("canonical_id") != original_id for x in records):
+            initial_decision["comparison"]["original"] = rank_candidates([original_record], context, today=today)[0]
+        initial_decision["original_id"] = original_id
         # Matching only category and exposure prevents unrelated substitutions.
         wanted = {x.get("canonical_id") for x in records}
         extras = [deepcopy(x) for x in universe if x.get("canonical_id") not in wanted
                   and x.get("category") == category]
-        if context.get("currency") == "ARS":
-            source_rank = {"CEDEAR:SPY:BYMA": 0, "CEDEAR:MELI:BYMA": 1, "LOCAL_SHARE:YPFD:BYMA": 2,
-                           "ETF:SPY:NYSE_ARCA": 3, "ADR:YPF:NYSE": 4, "FOREIGN_SHARE:MELI:NASDAQ": 5}
-        elif context.get("currency") == "USD":
-            source_rank = {"ETF:SPY:NYSE_ARCA": 0, "FOREIGN_SHARE:MELI:NASDAQ": 1, "ADR:YPF:NYSE": 2,
-                           "CEDEAR:SPY:BYMA": 3, "CEDEAR:MELI:BYMA": 4, "LOCAL_SHARE:YPFD:BYMA": 5}
-        else:
-            source_rank = {"ETF:SPY:NYSE_ARCA": 0, "CEDEAR:SPY:BYMA": 1, "CEDEAR:MELI:BYMA": 2,
-                           "FOREIGN_SHARE:MELI:NASDAQ": 3, "LOCAL_SHARE:YPFD:BYMA": 4, "ADR:YPF:NYSE": 5}
-        extras.sort(key=lambda r: (source_rank.get(r.get("canonical_id"), 9),
-                                  str(r.get("canonical_id") or "")))
+        extras_ranked = rank_candidates(extras, context, today=today)
+        extra_evaluations = {item.get("canonical_id"): item for item in extras_ranked}
+        extras.sort(key=lambda candidate: candidate_priority(
+            candidate, context, extra_evaluations.get(candidate.get("canonical_id"))))
         expand_needed = initial_decision["decision"] in ("INFORMACION_INSUFICIENTE", "AMPLIAR_BUSQUEDA")
         may_query = not allow_provider or (query_count < limits.max_queries and clock() - started < limits.max_seconds)
         if expand_needed and extras and may_query:
             # Reserve at most four result slots for distinct curated identities.
-            reserve = min(4, len(extras), max(0, limits.max_results - (1 if records else 0)))
-            capacity = max(1 if records else 0, limits.max_results - reserve)
-            if len(records) > capacity:
-                omitted[category] = omitted.get(category, 0) + len(records) - capacity
-                records = records[:capacity]
-                if original_id and all(item.get("canonical_id") != original_id for item in records):
-                    original_record = next((item for item in initial if item.get("canonical_id") == original_id), original_record)
-                    if records: records[-1] = original_record
-                    elif capacity > 0: records.append(original_record)
             extras = extras[:max(0, limits.max_results - len(records))]
             if extras:
                 events.append({"event": "AMPLIAR_BUSQUEDA", "category": category,
@@ -303,7 +296,11 @@ def research_instruments(result, snapshot, catalogs, *, refresh=False, today=Non
         decision = decide_category(records, context, original_id=original_id,
                                    can_expand=False,
                                    today=today)
-        decision["educational_selection"] = build_educational_selection(records, context, today=today)
+        if original_id and original_record and all(x.get("canonical_id") != original_id for x in records):
+            decision["comparison"]["original"] = rank_candidates([original_record], context, today=today)[0]
+        decision["schema_version"] = 3
+        decision["educational_selection"] = {"status": "SELECTED_BY_RULES" if decision["selected"] else "NO_SELECTION",
+                                              "cards": deepcopy(decision["selected"])}
         categories.append(decision)
         decision["initial_evaluation"] = initial_decision
         # Two cards are alternative illustrations of the same category amount.
@@ -317,7 +314,7 @@ def research_instruments(result, snapshot, catalogs, *, refresh=False, today=Non
         exec_id = execution_id(result, snapshot)
     except ImportError:
         exec_id = None
-    return {"execution_id": exec_id, "policy_version": POLICY_VERSION,
+    return {"schema_version": 3, "execution_id": exec_id, "policy_version": POLICY_VERSION,
             "universe_version": UNIVERSE_VERSION, "knowledge_versions": versions,
             "expert_review": "pending", "inputs": deepcopy(snapshot), "categories": categories,
             "educational_universe": [

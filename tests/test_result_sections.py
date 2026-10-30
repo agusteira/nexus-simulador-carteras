@@ -1,6 +1,7 @@
 """Product checks for the three native result sections and research cards."""
 from datetime import datetime, timezone
 import os
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -23,26 +24,49 @@ def _research_snapshot(result, snapshot, **kwargs):
             cards = [{
                 "canonical_id": "ADR:YPF:NYSE", "name": "YPF S.A.", "instrument_type": "ADR",
                 "ticker": "YPF", "market": "NYSE", "category": name, "exposure": "equity",
+                "issuer": "YPF S.A.", "quotation_currency": "ARS", "subscription_currency": "ARS",
+                "economic_currency": "ARS", "costs": 0.01, "minimum": 1, "unit_price": 12,
+                "access": "available", "settlement_days": 2,
                 "description": "ADR de YPF en el mercado estadounidense.",
                 "educational_description": "Es un certificado que representa acciones de YPF en otro mercado.",
-                "reason": "La fuente confirmó identidad y clasificación; no es una selección operativa.",
-                "missing_fields": ["costs", "holdings", "access"], "operational_status": "operación pendiente",
-                "currency_status": "unknown", "familiar": True, "knowledge_version": 1,
+                "reason": "Cumple los criterios de ejemplo del motor.",
+                "missing_fields": [], "familiar": True, "knowledge_version": 1,
                 "evidence": [{"source": "Fixture documentado", "url": "https://example.test/ypf",
                               "kind": "observed", "observed_at": datetime.now(timezone.utc).isoformat(),
                               "data_date": None, "version": "fixture-1", "fields": {"name": "YPF S.A."}}],
             }]
+        selected = []
+        evaluated = []
+        comparison = {"reason": "No hay datos suficientes para seleccionar."}
+        category_decision = "INFORMACION_INSUFICIENTE"
+        if cards:
+            selected = [cards[0]]
+            evaluated = [{"canonical_id": cards[0]["canonical_id"], "record": cards[0], "eligible": True,
+                          "decision": "CONSERVAR_CANDIDATO", "reason": "Cumple los criterios evaluados.",
+                          "missing_fields": [], "ranking_factors": {"riesgo": 1, "costos": 2}}]
+            category_decision = "CONSERVAR_CANDIDATO"
+            comparison = {"original": evaluated[0], "alternative": evaluated[0], "reason": "Se conserva el candidato elegible."}
         categories.append({
-            "category": name, "decision": "INFORMACION_INSUFICIENTE", "selected": [],
+            "category": name, "decision": category_decision,
+            "selected": selected, "evaluated": evaluated, "comparison": comparison,
             "educational_selection": {"status": "REFERENCIA_EDUCATIVA" if cards else "SIN_REFERENCIA_VERIFICADA",
-                                      "cards": cards, "excluded": [], "rule_ids": [], "reasons": []},
+                                      "cards": [{"canonical_id": "ETF:SPY:NYSE_ARCA", "name": "SPY educativo"}],
+                                      "excluded": [], "rule_ids": [], "reasons": []},
         })
         # Old schema stays in the JSON for compatibility, but never becomes a UI card.
         legacy_categories.append({"categoria": name, "peso": weight, "monto_asignado": result.get("capital", 0) * weight / 100,
                                   "ejemplos": [{"nombre": "Fondo alfabético legacy"}],
                                   "alternativas": [{"nombre": "Alternativa legacy"}], "diagnostico": {"registros_revisados": 1}})
-    research = {"execution_id": "test-run", "policy_version": "test-policy", "universe_version": "test-universe",
-                "categories": categories, "educational_universe": [],
+    crypto_universe = [
+        {"canonical_id": "CRYPTO:BTC", "name": "Bitcoin", "instrument_type": "CRYPTO",
+         "educational_description": "Activo digital Bitcoin."},
+        {"canonical_id": "CRYPTO_FUND:IBIT", "name": "iShares Bitcoin Trust", "instrument_type": "CRYPTO_FUND",
+         "educational_description": "Fondo con exposición a Bitcoin."},
+    ]
+    research = {"schema_version": 3, "execution_id": "test-run", "policy_version": "test-policy", "universe_version": "test-universe",
+                "source_coverage": [{"source": "Catálogo FCI", "url": "https://example.test/fci",
+                                     "published_at": "2026-10-29", "candidate_count": 0, "classes": ["FCI"]}],
+                "categories": categories, "educational_universe": crypto_universe,
                 "search": {"queries": 1, "limits": {"max_queries": 4}, "elapsed_seconds": 0.1, "errors": []}}
     return {"ejecucion_id": "test-run", "consultado_en": datetime.now(timezone.utc).isoformat(),
             "moneda": result.get("moneda", "ARS"), "ventana_datos_dias": 7,
@@ -91,7 +115,7 @@ class ResultSectionsTest(unittest.TestCase):
     def test_three_native_tabs_and_research_categories_start_collapsed(self):
         labels = [tab.label for tab in self.app.get("tab")]
         self.assertEqual(labels, ["Resultado de la simulación", "Del porcentaje a ejemplos reales", "Cómo se interpretaron tus respuestas"])
-        target = next(item for item in self.app.expander if item.label.startswith("Renta variable ·") and "referencia investigada" in item.label)
+        target = next(item for item in self.app.expander if item.label.startswith("Renta variable ·") and "candidato seleccionado" in item.label)
         self.assertFalse(target.proto.expanded)
         self.assertEqual(self.query_mock.call_count, 1)
 
@@ -99,9 +123,66 @@ class ResultSectionsTest(unittest.TestCase):
         saved = self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]
         self.assertTrue(saved["categorias"][0]["ejemplos"] or saved["categorias"][0]["alternativas"])
         text_values = [item.value for item in [*self.app.text, *self.app.markdown] if isinstance(item.value, str)]
-        self.assertTrue(any("Instrumentos para entender tu cartera" in value for value in text_values))
+        self.assertTrue(any("Selección de instrumentos" in value for value in text_values))
         self.assertTrue(any("YPF · ADR de YPF" in value for value in text_values))
+        self.assertTrue(any("Moneda: coincide con la simulación" in value for value in text_values))
+        self.assertTrue(any("disponibilidad por intermediario sin confirmar" in value for value in text_values))
+        self.assertFalse(any("Moneda: sin confirmar" in value or "Operativa: pendiente de confirmar" in value for value in text_values))
         self.assertFalse(any("Fondo alfabético legacy" in value or "Alternativa legacy" in value for value in text_values))
+        self.assertFalse(any("SPY educativo" in value for value in text_values))
+        saved_json = json.dumps(saved, ensure_ascii=False)
+        self.assertIn("CRYPTO:BTC", saved_json)
+        self.assertIn("CRYPTO_FUND:IBIT", saved_json)
+        self.assertFalse(any("Bitcoin" in value or "iShares Bitcoin Trust" in value for value in text_values))
+
+    def _set_research(self, research):
+        result = self.app.session_state["resultado_robo"]
+        result["ejemplos_instrumentos"]["investigacion"] = research
+        self.app.session_state["resultado_robo"] = result
+        self.app.run()
+        self.assertFalse(self.app.exception, [item.message for item in self.app.exception])
+
+    def _visible_text(self):
+        return [item.value for kind in (self.app.text, self.app.markdown, self.app.info, self.app.warning, self.app.caption)
+                for item in kind if isinstance(item.value, str)]
+
+    def test_educational_cards_ignored_and_old_schema_requests_update(self):
+        saved = self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]
+        research = saved["investigacion"]
+        research["categories"][0]["selected"] = []
+        research["categories"][0]["evaluated"] = []
+        self._set_research(research)
+        self.assertFalse(any("SPY educativo" in value for value in self._visible_text()))
+        research["schema_version"] = 2
+        self._set_research(research)
+        text_values = self._visible_text()
+        self.assertTrue(any("referencias informativas" in value and "Actualizá" in value for value in text_values))
+        self.assertFalse(any("SPY educativo" in value or "YPF · ADR de YPF" in value for value in text_values))
+
+    def test_unknown_but_eligible_selected_candidate_is_rendered(self):
+        research = self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]["investigacion"]
+        candidate = {"canonical_id": "ETF:XYZ:XNAS", "name": "Fondo XYZ", "instrument_type": "ETF",
+                     "market": "XNAS", "educational_description": "Descripción general."}
+        research["categories"][0]["selected"] = [candidate]
+        research["categories"][0]["evaluated"] = [{"canonical_id": "ETF:XYZ:XNAS", "record": candidate,
+                                                        "eligible": True, "decision": "CONSERVAR_CANDIDATO",
+                                                        "missing_fields": []}]
+        research["categories"][0]["decision"] = "CONSERVAR_CANDIDATO"
+        self._set_research(research)
+        self.assertTrue(any("Fondo XYZ" in value for value in self._visible_text()))
+
+    def test_malformed_selected_candidate_is_not_rendered(self):
+        research = self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]["investigacion"]
+        candidate = {"canonical_id": "ETF:BAD:XNAS", "name": "Candidato inválido", "instrument_type": "ETF"}
+        research["categories"][0]["selected"] = [candidate]
+        research["categories"][0]["evaluated"] = [{"canonical_id": "ETF:BAD:XNAS", "record": candidate,
+                                                        "eligible": True, "decision": "SELECCIONADO",
+                                                        "missing_fields": []}]
+        research["categories"][0]["decision"] = "CONSERVAR_CANDIDATO"
+        self._set_research(research)
+        text_values = self._visible_text()
+        self.assertFalse(any("Candidato inválido" in value for value in text_values))
+        self.assertTrue(any("no coincide con una evaluación elegible" in value for value in text_values))
 
     def test_tab_navigation_does_not_repeat_research_query(self):
         self.app.button(key="nav_auditoria").click().run()

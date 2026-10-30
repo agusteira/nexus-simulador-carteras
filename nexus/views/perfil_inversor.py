@@ -13,6 +13,7 @@ PROFILE_FIELDS = {
     "objetivo": ("perfil_objetivo", "Preservacion"),
     "tolerancia": ("perfil_tolerancia", 10),
     "liquidez": ("perfil_liquidez", 20),
+    "acceso": ("perfil_acceso", []),
 }
 
 
@@ -117,6 +118,14 @@ def render():
         )
         if "horizonte" in errors:
             st.error(errors["horizonte"])
+        st.multiselect(
+            "¿A qué mercados tenés acceso? (opcional)",
+            ["local", "international"],
+            format_func=lambda value: {"local": "Argentina", "international": "Exterior"}[value],
+            key="perfil_acceso",
+            on_change=_sync_draft,
+            help="Declaralo solo si lo conocés. Esto no confirma que tu intermediario ofrezca cada instrumento. Si no lo informás, la selección queda pendiente de ese dato.",
+        )
     with right, st.container(border=True):
         st.markdown("## Lo que necesitás")
         objetivo = st.selectbox(

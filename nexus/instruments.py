@@ -10,6 +10,29 @@ import unicodedata
 from .market_data import ArgentinaDatosClient, MarketDataError, MAX_DATA_AGE_DAYS, valid_data_date
 
 
+class _ResearchProviders:
+    """Route by provider-supported identity, never by a preferred investment."""
+
+    def __init__(self, *providers):
+        self.providers = providers
+
+    def _for(self, record):
+        return next((provider for provider in self.providers if provider.supports(record)), None)
+
+    def supports(self, record):
+        return self._for(record) is not None
+
+    def source_key(self, record):
+        provider = self._for(record)
+        return provider.source_key(record) if provider else None
+
+    def research(self, record, **kwargs):
+        provider = self._for(record)
+        if provider is None:
+            raise MarketDataError("No hay un proveedor habilitado para investigar este instrumento.")
+        return provider.research(record, **kwargs)
+
+
 def _text(value):
     return " ".join("".join(c for c in unicodedata.normalize("NFKD", str(value or "")) if not unicodedata.combining(c)).lower().split())
 
@@ -164,23 +187,33 @@ def build_examples(result, snapshot, catalogs, *, errors=None, today=None):
 
 def query_examples(result, snapshot, *, refresh=False, client=None, today=None,
                    provider=None, store=None, limits=None):
-    # A supplied legacy client may be a fixture. Research still runs against the
-    # curated universe, while its network provider is disabled unless injected.
-    use_reference = True
+    # Explicit clients/providers remain injectable for offline tests. The live
+    # FCI universe is supplied by CAFCI, rather than a reviewed list of names.
     if client is not None and provider is None:
         provider = False
-    client = client or ArgentinaDatosClient()
+    if client is None:
+        from .cafci import CAFCIClient, CAFCIReferenceProvider
+        from .instrument_providers import ReferenceProvider
+        client = CAFCIClient()
+        if provider is None:
+            provider = _ResearchProviders(CAFCIReferenceProvider(), ReferenceProvider())
     catalogs, errors = [], []
     try:
         catalogs.append(client.fund_catalog(refresh=refresh, today=today))
     except MarketDataError as exc:
         errors.append(str(exc))
     examples = build_examples(result, snapshot, catalogs, errors=errors, today=today)
-    if use_reference:
-        from .instrument_research import research_instruments
-        examples["investigacion"] = research_instruments(
-            result, snapshot, catalogs, refresh=refresh, today=today,
-            provider=provider, store=store, limits=limits,
-        )
-        examples["investigacion"]["search"]["errors"] = list(errors) + examples["investigacion"]["search"].get("errors", [])
+    from .instrument_research import research_instruments
+    examples["investigacion"] = research_instruments(
+        result, snapshot, catalogs, refresh=refresh, today=today,
+        provider=provider, store=store, limits=limits,
+    )
+    examples["investigacion"]["search"]["errors"] = list(errors) + examples["investigacion"]["search"].get("errors", [])
+    examples["investigacion"]["source_coverage"] = [
+        {"source": source.get("fuente"), "url": source.get("url"),
+         "published_at": source.get("fecha_publicacion"),
+         "candidate_count": len(source.get("normalized_records", [])) + len(source.get("fondos", [])),
+         "classes": ["FCI"]}
+        for source in catalogs
+    ]
     return examples
