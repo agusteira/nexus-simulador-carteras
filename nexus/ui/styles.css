@@ -435,3 +435,74 @@ hr {
 h1,h2,h3,h4,[id],a[name] { scroll-margin-top:5rem; }
 .allocation-table thead th:nth-child(2) { white-space:nowrap; text-align:right; }
 @media(max-width:540px) { .result-summary { padding:1.1rem; gap:1rem; } .result-summary dd { font-size:.9rem; } .result-summary-cell:first-child dd { font-size:1.15rem; } }
+
+/* Native result sections: keep the three labels readable and keyboard navigable. */
+.st-key-resultado_secciones [role="tablist"] {
+    display: flex;
+    width: 100%;
+    height: auto;
+    min-height: 60px;
+    align-items: stretch;
+    gap: 0.45rem;
+    padding: 0.45rem;
+    border: 1px solid var(--border);
+    border-radius: 1rem;
+    background: var(--surface);
+}
+
+.st-key-resultado_secciones [role="tab"] {
+    display: flex;
+    min-height: 60px;
+    flex: 1 1 0;
+    align-items: center;
+    justify-content: center;
+    padding: 0.75rem 0.9rem;
+    border: 1px solid transparent;
+    border-radius: 0.7rem;
+    color: var(--muted);
+    white-space: normal;
+    text-align: center;
+}
+
+.st-key-resultado_secciones [role="tab"] p {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.st-key-resultado_secciones [role="tab"]:hover {
+    border-color: var(--border);
+    color: var(--text);
+}
+
+.st-key-resultado_secciones [role="tab"]:focus-visible {
+    outline: 3px solid var(--focus) !important;
+    outline-offset: 2px !important;
+}
+
+.st-key-resultado_secciones [role="tab"][aria-selected="true"] {
+    border-color: var(--accent);
+    background: var(--surface-raised);
+    color: var(--accent);
+    box-shadow: inset 0 -3px var(--accent);
+}
+
+.st-key-resultado_secciones .react-aria-SelectionIndicator {
+    display: none;
+}
+
+@media (max-width: 640px) {
+    .st-key-resultado_secciones [role="tablist"] {
+        flex-direction: column;
+        height: auto;
+        min-height: 0;
+        gap: 0.35rem;
+    }
+
+    .st-key-resultado_secciones [role="tab"] {
+        width: 100%;
+        flex: 1 1 auto;
+        min-height: 60px;
+        justify-content: flex-start;
+        text-align: left;
+    }
+}

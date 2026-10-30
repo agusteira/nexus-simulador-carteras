@@ -18,7 +18,7 @@ def _render_example(item, currency):
         if isinstance(minimum, (int, float)) and not isinstance(minimum, bool) and math.isfinite(minimum):
             st.markdown(f"**Mínimo informado:** {moneda_fmt(minimum, currency)}")
         st.caption(f"Dato: {item['fecha_dato']} · ArgentinaDatos")
-        with st.expander("Por qué aparece y qué revisar"):
+        with st.expander("Por qué aparece y qué revisar", expanded=False):
             st.write(item["criterio"])
             st.caption(f"Identificador de fondo/clase: {item['identificador']}")
             if item.get("administradora"):
@@ -59,13 +59,13 @@ def render(result, snapshot):
     failed = bool(saved.get("errores_fuente")) and not saved.get("fuentes")
     if failed:
         st.warning("No pudimos cargar el catálogo de fondos. Reintentá la consulta.")
-        with st.expander("Detalles del error"):
+        with st.expander("Detalles del error", expanded=False):
             for error in saved["errores_fuente"]:
                 st.write(error)
         return
     if saved.get("errores_fuente"):
         st.warning("La distribución sigue disponible, pero no pudimos verificar ejemplos con la fuente en esta consulta.")
-        with st.expander("Qué pasó con la fuente"):
+        with st.expander("Qué pasó con la fuente", expanded=False):
             for error in saved["errores_fuente"]:
                 st.write(error)
     for category in saved["categorias"]:
@@ -79,7 +79,7 @@ def render(result, snapshot):
             status = "Sin opciones para este monto"
         else:
             status = "Sin fondos compatibles"
-        with st.expander(f"{category['categoria']} · {category['peso']}% · {status}", expanded=bool(category["ejemplos"] or category["alternativas"])):
+        with st.expander(f"{category['categoria']} · {category['peso']}% · {status}", expanded=False):
             assigned = category.get("monto_asignado")
             if assigned is not None:
                 st.caption(f"Monto asignado a esta categoría: {moneda_fmt(assigned, saved['moneda'])} {saved['moneda']}.")
@@ -127,7 +127,7 @@ def render(result, snapshot):
                     st.write(category["limitacion"])
             if category["registros_sin_fecha_vigente"]:
                 st.caption("Se excluyeron registros con fecha ausente, inválida, futura o fuera de la ventana de 7 días.")
-    with st.expander("Fuente, actualización y criterio de selección"):
+    with st.expander("Fuente, actualización y criterio de selección", expanded=False):
         st.write(saved["criterio_orden"])
         st.write("Se exige moneda de denominación y de inversión igual a la simulación. Se excluyen mínimos informados superiores al monto asignado a la categoría. La consulta no certifica comisiones, disponibilidad, aptitud ni rescate inmediato.")
         for source in saved["fuentes"]:
