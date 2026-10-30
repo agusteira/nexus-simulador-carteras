@@ -116,7 +116,7 @@ Podés editar el perfil, simular otro escenario, consultar la auditoría y desca
 
 ### Conservación de datos
 
-Las respuestas y los borradores se conservan al navegar durante la misma sesión de Streamlit. No hay almacenamiento permanente: recargar o cerrar el navegador puede iniciar una sesión nueva y perder los datos. El prototipo no implementa identificación de usuarios ni historial persistente.
+Las respuestas y los borradores se conservan al navegar durante la misma sesión de Streamlit. Cada evaluación y sus revisiones de investigación también se guardan en SQLite en el servidor (sección 14). Los borradores no guardados pueden perderse al recargar. El identificador de usuario es una etiqueta de consulta; no implementa autenticación ni aislamiento entre usuarios.
 
 ## 6. ¿Qué significa “DERIVADO_ASESOR_MANUAL”?
 
@@ -206,7 +206,7 @@ Sólo aparecen categorías con asignación positiva. La clasificación y ambas m
 
 Se eligen hasta dos fondos diferentes por categoría en orden alfabético, priorizando A3500 en las alternativas cambiarias. No se ordena por rendimiento. La unidad de cuotaparte no está normalizada por NEXUS: su valor se identifica como reportado por la fuente y no se calculan cantidades a comprar.
 
-La consulta queda dentro de `resultado_robo.ejemplos_instrumentos`, con hash de la ejecución, copia de las entradas originales, fechas, fuente, moneda, criterios y limitaciones. Resultado, auditoría y JSON conservan esa misma consulta aunque se edite el perfil. Una nueva evaluación genera otra consulta; actualizar los ejemplos no vuelve a ejecutar las reglas ni cambia sus porcentajes. La persistencia sigue limitada a la sesión.
+La consulta queda dentro de `resultado_robo.ejemplos_instrumentos`, con hash de la ejecución, copia de las entradas originales, fechas, fuente, moneda, criterios y limitaciones. Resultado, auditoría y JSON conservan esa misma consulta aunque se edite el perfil. Una nueva evaluación genera otra consulta; actualizar los ejemplos no vuelve a ejecutar las reglas ni cambia sus porcentajes. Cada actualización añade una revisión al historial SQLite, sin sobrescribir la evaluación original.
 
 
 ## 13. Matrices de decisión configurables (RF-08)
@@ -222,3 +222,17 @@ Si se define la variable de entorno o el secreto `NEXUS_ADMIN_CLAVE`, la pantall
 El perfil tiene un **identificador de usuario** opcional (vacío = `anonimo`). Cada evaluación ejecutada se guarda en `data/historial.db` (SQLite) con entradas, escenario, resultado, asignación, traza, errores, versión de la matriz y fecha.
 
 En **Más opciones → Historial de evaluaciones** se filtra por usuario (sin distinguir mayúsculas) y rango de fechas, se abre el detalle completo con su traza y su JSON descargable, y se comparan dos evaluaciones lado a lado con las diferencias por categoría. La variable `NEXUS_DATA_DIR` permite cambiar la carpeta de datos; las pruebas la usan para no tocar `data/`.
+
+## 15. Investigación y conocimiento de instrumentos (issue #1)
+
+La consulta agrega `ejemplos_instrumentos.investigacion`: candidato inicial, alternativas, exclusiones, reglas, evidencia por campo, faltantes y versiones de política, universo y fichas. Primero se aplican exclusiones; solo los candidatos elegibles se ordenan por criterios operativos y diversificación conocida. La familiaridad educativa actúa después y nunca elimina una exclusión. No hay un puntaje de “mejor inversión” ni se usan rendimientos recientes.
+
+El universo curado distingue SPY exterior y su CEDEAR, MELI exterior y su CEDEAR, acción local YPFD y ADR YPF, Bitcoin directo y un fondo con exposición a Bitcoin. Cada ficha conserva mercado, vehículo y subyacente; no se comparten precios ni unidades. Las fuentes oficiales verifican identidad y los campos que efectivamente publican. No prueban condiciones del broker, costos totales, liquidez inmediata ni disponibilidad para operar. IBIT permanece como propuesta educativa sin proveedor habilitado. BTC y sus vehículos no reciben asignación.
+
+La investigación tiene límites configurables mediante `ResearchLimits`: cuatro fuentes de referencia, doce segundos de presupuesto y veinte candidatos por categoría por defecto; cada solicitud tiene timeout de hasta cuatro segundos. La consulta inicial de FCI tiene su propio timeout de ocho segundos. La caché HTTP dura quince minutos; **Actualizar ejemplos de esta evaluación** fuerza una nueva revisión y permite reintentar. Los fallos quedan registrados sin sustituir datos desconocidos por supuestos. Solo se consultan URLs fijas permitidas; no se envían respuestas personales a proveedores.
+
+La política provisional `config/instrument_policy.json` hace intervenir horizonte y objetivo en la asignación, con topes explícitos y trazas. **Su revisión experta está pendiente**: ningún resultado se presenta como compatibilidad financiera validada. Reglas, prioridades, umbrales y limitaciones: [política educativa](docs/instrument-policy.md).
+
+Las fichas y evidencias se guardan en `data/instrument_knowledge.db` con versiones, vencimiento e historial. `KnowledgeStore.history` y `restore` permiten consultar y restaurar creando una versión nueva. Un instrumento nuevo sigue como propuesta hasta completar sus verificaciones. Las señales **Entendí**, **Ya lo conocía** y **Señalar un dato** se registran por separado: una corrección obliga a revisión futura y ninguna señal cambia por sí sola las reglas de riesgo. Es reutilización de conocimiento, no entrenamiento automático.
+
+Los ejemplos legados del catálogo siguen accesibles como coincidencias de clasificación y moneda, separados de las decisiones de investigación. Una identidad observada no convierte esos ejemplos en selecciones operativas. La distribución se conserva aunque ningún candidato resulte elegible. Consultá el [flujo y la cobertura de fuentes](docs/instrument-research.md).

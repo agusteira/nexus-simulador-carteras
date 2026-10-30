@@ -28,6 +28,14 @@ CREATE TABLE IF NOT EXISTS evaluaciones (
 );
 CREATE INDEX IF NOT EXISTS idx_evaluaciones_usuario_fecha
     ON evaluaciones (usuario_id, fecha_ejecucion);
+CREATE TABLE IF NOT EXISTS revisiones_investigacion (
+    evaluacion_id INTEGER NOT NULL,
+    revision INTEGER NOT NULL,
+    ejecucion_id TEXT,
+    snapshot_json TEXT NOT NULL,
+    creado_en TEXT NOT NULL,
+    PRIMARY KEY (evaluacion_id, revision)
+);
 """
 
 
@@ -114,7 +122,52 @@ def obtener_evaluacion(evaluacion_id):
     registro = {clave: fila[clave] for clave in fila.keys() if not clave.endswith("_json")}
     for clave in ("entrada", "mercado", "resultado", "auditoria", "errores"):
         registro[clave] = json.loads(fila[f"{clave}_json"])
+    revisiones = obtener_revisiones_investigacion(evaluacion_id)
+    if revisiones:
+        registro["revisiones_investigacion"] = revisiones
+        registro["resultado"]["ejemplos_instrumentos"] = revisiones[-1]["snapshot"]
+        registro["resultado"]["revisiones_investigacion"] = [r["snapshot"] for r in revisiones]
     return registro
+
+
+def anexar_revision_investigacion(evaluacion_id, snapshot):
+    """Append a frozen research snapshot without changing the base evaluation."""
+    payload = _json(snapshot)
+    research_execution = (snapshot.get("investigacion") or {}).get("execution_id")
+    execution = snapshot.get("ejecucion_id")
+    if not execution or (research_execution and research_execution != execution):
+        raise ValueError("La revisión no corresponde a una ejecución estable.")
+    with closing(_conectar()) as conexion, conexion:
+        conexion.execute("BEGIN IMMEDIATE")
+        base = conexion.execute("SELECT entrada_json, mercado_json, resultado_json FROM evaluaciones WHERE id=?", (evaluacion_id,)).fetchone()
+        if base is None:
+            raise KeyError(f"No existe la evaluación {evaluacion_id}.")
+        inputs = snapshot.get("entradas_evaluacion") or (snapshot.get("investigacion") or {}).get("inputs")
+        stored_input = json.loads(base["entrada_json"])
+        stored_profile = stored_input.get("perfil", stored_input)
+        if not isinstance(inputs, dict) or inputs.get("perfil") != stored_profile or inputs.get("escenario") != json.loads(base["mercado_json"]):
+            raise ValueError("Las entradas de la revisión no coinciden con la evaluación guardada.")
+        from .instruments import execution_id
+        if execution != execution_id(json.loads(base["resultado_json"]), inputs):
+            raise ValueError("La revisión corresponde a otro resultado de evaluación.")
+        existing = conexion.execute(
+            "SELECT revision FROM revisiones_investigacion WHERE evaluacion_id=? AND snapshot_json=? ORDER BY revision DESC LIMIT 1",
+            (evaluacion_id, payload),
+        ).fetchone()
+        if existing:
+            return existing["revision"]
+        row = conexion.execute("SELECT COALESCE(MAX(revision),0)+1 n FROM revisiones_investigacion WHERE evaluacion_id=?", (evaluacion_id,)).fetchone()
+        revision = row["n"]
+        conexion.execute("INSERT INTO revisiones_investigacion VALUES (?,?,?,?,?)",
+                         (evaluacion_id, revision, execution, payload, datetime.now().isoformat(timespec="seconds")))
+        return revision
+
+
+def obtener_revisiones_investigacion(evaluacion_id):
+    with closing(_conectar()) as conexion:
+        filas = conexion.execute("SELECT revision, ejecucion_id, snapshot_json, creado_en FROM revisiones_investigacion WHERE evaluacion_id=? ORDER BY revision", (evaluacion_id,)).fetchall()
+    return [{"revision": f["revision"], "execution_id": f["ejecucion_id"],
+             "snapshot": json.loads(f["snapshot_json"]), "creado_en": f["creado_en"]} for f in filas]
 
 
 def listar_usuarios():

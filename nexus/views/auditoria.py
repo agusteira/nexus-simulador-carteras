@@ -90,6 +90,21 @@ def render():
     else:
         st.info("Esta salida no contiene reglas ni errores registrados.")
 
+    research_snapshot = resultado.get("ejemplos_instrumentos") or {}
+    research = research_snapshot.get("investigacion") or {}
+    if research:
+        st.markdown("## Investigación de instrumentos")
+        st.caption(f"Ejecución {research.get('execution_id')} · política {research.get('policy_version')} · universo {research.get('universe_version')} · revisión experta pendiente")
+        for category in research.get("categories", []):
+            st.write(f"**{category.get('category')} — {category.get('decision')}**")
+            st.write(category.get("reasons", []))
+            for candidate in category.get("evaluated", []):
+                record = candidate.get("record", {})
+                st.write({"instrumento": record.get("name") or candidate.get("canonical_id"),
+                          "decision": candidate.get("decision"), "rule_ids": candidate.get("rule_ids"),
+                          "missing_fields": candidate.get("missing_fields"),
+                          "evidence": record.get("evidence", [])})
+
     with st.expander("Detalle técnico y JSON completo"):
         st.json(resultado)
 

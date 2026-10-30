@@ -3,6 +3,8 @@
 from copy import deepcopy
 from datetime import date
 import json
+import os
+import tempfile
 import unittest
 from unittest.mock import Mock, patch
 from urllib.error import URLError
@@ -75,6 +77,13 @@ class PublicSourceTest(unittest.TestCase):
 
 
 class InstrumentExamplesTest(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        isolated_data = patch.dict(os.environ, {"NEXUS_DATA_DIR": directory.name})
+        isolated_data.start()
+        self.addCleanup(isolated_data.stop)
+
     def test_diagnostics_count_first_exclusion_once_and_budget_per_category(self):
         funds = [
             fund(tipoRenta="Renta Fija", fecha="2020-01-01", inversionMinima=999999),

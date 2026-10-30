@@ -162,11 +162,25 @@ def build_examples(result, snapshot, catalogs, *, errors=None, today=None):
             "advertencia": "Ejemplos para investigar, no una orden ni una recomendación personalizada. No se calculan cantidades ni rendimientos futuros."}
 
 
-def query_examples(result, snapshot, *, refresh=False, client=None, today=None):
+def query_examples(result, snapshot, *, refresh=False, client=None, today=None,
+                   provider=None, store=None, limits=None):
+    # A supplied legacy client may be a fixture. Research still runs against the
+    # curated universe, while its network provider is disabled unless injected.
+    use_reference = True
+    if client is not None and provider is None:
+        provider = False
     client = client or ArgentinaDatosClient()
     catalogs, errors = [], []
     try:
         catalogs.append(client.fund_catalog(refresh=refresh, today=today))
     except MarketDataError as exc:
         errors.append(str(exc))
-    return build_examples(result, snapshot, catalogs, errors=errors, today=today)
+    examples = build_examples(result, snapshot, catalogs, errors=errors, today=today)
+    if use_reference:
+        from .instrument_research import research_instruments
+        examples["investigacion"] = research_instruments(
+            result, snapshot, catalogs, refresh=refresh, today=today,
+            provider=provider, store=store, limits=limits,
+        )
+        examples["investigacion"]["search"]["errors"] = list(errors) + examples["investigacion"]["search"].get("errors", [])
+    return examples

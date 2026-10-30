@@ -30,6 +30,10 @@ class UserFlowTest(unittest.TestCase):
             "consultado_en": today + "T00:00:00+00:00", "fecha_publicacion": today + "T00:00:00+00:00"})
         self.source_mock = self.public_source.start()
         self.addCleanup(self.public_source.stop)
+        # All provider calls stay offline, including reference research added in issue #1.
+        references = patch("nexus.instrument_research.ReferenceProvider.research", side_effect=lambda record, **kwargs: record)
+        references.start()
+        self.addCleanup(references.stop)
         self.app = AppTest.from_file(str(ROOT / "app.py"), default_timeout=20).run()
         self.assert_clean()
 
@@ -222,7 +226,12 @@ class UserFlowTest(unittest.TestCase):
         self.evaluate()
         self.assertEqual(len(self.app.warning), 1)
         self.assertEqual(self.app.warning[0].value, "No pudimos cargar el catálogo de fondos. Reintentá la consulta.")
-        self.assertFalse(any("Renta variable ·" in item.label or "Renta fija" in item.label for item in self.app.expander))
+        # Reference research remains inspectable when the FCI catalog fails;
+        # source-specific examples must not claim that funds were retrieved.
+        saved = self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]
+        self.assertFalse(saved["fuentes"])
+        self.assertTrue(saved["investigacion"]["educational_universe"])
+        self.assertTrue(all(not c["ejemplos"] and not c["alternativas"] for c in saved["categorias"]))
         self.assertEqual(len([b for b in self.app.button if "Reintentar consulta" in b.label]), 1)
         self.click("Reintentar consulta")
         self.assertEqual(self.source_mock.call_count, 2)

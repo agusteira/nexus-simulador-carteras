@@ -1,0 +1,13 @@
+{
+  "version": "educational-1",
+  "expert_review": "pending",
+  "crypto_allocation": false,
+  "equity_caps": {
+    "horizon_months": {"under_12": 0, "12_to_35": 20, "36_or_more": null},
+    "objectives": {"Preservacion": 10, "Crecimiento": null, "Renta": null}
+  },
+  "liquidity_required_immediate_at_or_above": 50,
+  "concentration_limits_percent": {"issuer": 50, "sector": 75, "country": 100},
+  "evidence_max_age_days": {"fci": 7, "identity": 30},
+  "educational_only": true
+}
