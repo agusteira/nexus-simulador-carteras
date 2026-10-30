@@ -123,13 +123,17 @@ def _render_success(resultado):
         for i, (category, percent) in enumerate(cartera.items()) if percent > 0
     )
     st.markdown(f'<div class="allocation-chart" role="img" aria-label="Distribución ilustrativa; porcentajes detallados en la tabla anterior">{bars}</div>', unsafe_allow_html=True)
-    render_instrument_examples(resultado, _snapshot())
+    st.caption(resultado.get("advertencia", "Distribución ilustrativa."))
 
+
+def _render_interpretation(resultado):
     reglas = resultado.get("auditoria", [])
+    st.markdown("## Cómo se interpretaron tus respuestas")
     if reglas:
-        st.markdown("## Cómo se interpretaron tus respuestas")
         for regla in reglas[:2]:
             st.markdown(f"- {regla['motivo']}")
+    else:
+        st.info("Esta evaluación no incluye una traza de auditoría disponible.")
     with st.expander("Detalle técnico de reglas y JSON"):
         if reglas:
             st.dataframe(reglas, width="stretch", hide_index=True)
@@ -138,7 +142,6 @@ def _render_success(resultado):
             "pero no detalla cada ajuste porcentual de la cartera."
         )
         st.json(resultado)
-    st.caption(resultado.get("advertencia", "Distribución ilustrativa."))
 
 
 def _render_manual_result(resultado):
@@ -215,10 +218,25 @@ def render():
         )
         st.markdown("## Evaluación anterior")
 
-    _render_snapshot_summary(resultado, _snapshot())
     if resultado.get("estado") == "RECOMENDACION_EXITOSA":
-        _render_success(resultado)
+        distribution_tab, examples_tab, interpretation_tab = st.tabs(
+            [
+                "Resultado de la simulación",
+                "Del porcentaje a ejemplos reales",
+                "Cómo se interpretaron tus respuestas",
+            ],
+            key="resultado_secciones",
+            default="Resultado de la simulación",
+        )
+        with distribution_tab:
+            _render_snapshot_summary(resultado, _snapshot())
+            _render_success(resultado)
+        with examples_tab:
+            render_instrument_examples(resultado, _snapshot())
+        with interpretation_tab:
+            _render_interpretation(resultado)
     else:
+        _render_snapshot_summary(resultado, _snapshot())
         _render_manual_result(resultado)
 
     st.download_button(
