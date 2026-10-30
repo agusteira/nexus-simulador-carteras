@@ -1,6 +1,6 @@
 # Política educativa de instrumentos
 
-La versión `educational-1` es una regla determinista de cribado y compatibilidad operativa. **No está validada por especialistas**, no certifica elegibilidad financiera y no constituye asesoramiento ni recomendación personalizada. `expert_review` permanece `pending`.
+La versión `educational-2` es una regla determinista de cribado y compatibilidad operativa. **No está validada por especialistas**, no certifica elegibilidad financiera y no constituye asesoramiento ni recomendación personalizada. `expert_review` permanece `pending`.
 
 ## Orden de decisión
 
@@ -16,7 +16,7 @@ Las contradicciones y datos numéricos inválidos requieren revisión; luego pre
 ## Umbrales ilustrativos
 
 - Criptoactivos y cualquier vehículo con exposición `bitcoin` quedan excluidos.
-- La renta variable queda excluida con perfil conservador, tolerancia cero, objetivo `Preservacion` o horizonte inferior a 36 meses. Para el horizonte, la asignación agregada se limita a 0% antes de 12 meses y 20% entre 12 y 35 meses; para preservación, a 10%. El excedente se mueve a liquidez inmediata. No se cambia la matriz base ni se aumenta riesgo por objetivo `Crecimiento` o `Renta`.
+- Los límites de renta variable se aplican a la asignación de la categoría: perfil conservador y tolerancia cero la excluyen; el tope es 0% antes de 12 meses, 20% entre 12 y 35 meses y el tope de matriz desde 36 meses. Con objetivo `Preservacion`, el tope es 10%, no una exclusión automática. La cartera mueve el excedente a liquidez inmediata. No se cambia la matriz base ni se aumenta riesgo por objetivo `Crecimiento` o `Renta`.
 - Una necesidad de liquidez de 50% o más requiere liquidación acreditada como `immediate` y liquidación en cero días. `daily` y T+0 no prueban disponibilidad inmediata.
 - Los instrumentos de la categoría liquidez inmediata requieren siempre `immediate` y liquidación cero. La búsqueda también debe declarar moneda objetivo y lista de accesos permitidos; no se asumen.
 - El presupuesto se compara con el mayor entre mínimo y lote por precio, más costos conocidos. No se calcula cantidad a comprar.
@@ -24,6 +24,10 @@ Las contradicciones y datos numéricos inválidos requieren revisión; luego pre
 - La concentración muestra valor, peso sumado y estado `known`/`unknown` por emisor, sector, país y subyacente, con procedencia de evidencia fresca. Solo se aplican topes educativos cuando tanto los datos como los pesos están acreditados: emisor 50%, sector 75% y país 100%. El país de cotización/listado no se interpreta como país de exposición: requiere rol explícito `economic_exposure`. Para un FCI, la administradora no se cuenta como emisor económico; se necesita `issuer_role` respaldado como `economic_issuer` o `issuer`. Las tenencias solo mejoran la señal de diversificación si hay evidencia fresca de al menos dos subyacentes distintos.
 
 Los límites y umbrales son decisiones educativas provisionales y deben revisarse externamente antes de cualquier uso real. Los registros con concentración o tenencias desconocidas no reciben afirmaciones de diversificación. No se asume que dos listados de mercados distintos tengan el mismo precio o identidad.
+
+## Referencias educativas
+
+La pantalla puede mostrar hasta dos referencias de clase solo cuando la fuente observada confirma identidad y categoría/exposición. Una sugerencia familiar o `category_hint` curado solo dirige la búsqueda; no certifica la clase. El mandato publicado por un emisor puede explicar el objetivo del fondo, pero no comprueba que la cartera actual tenga esa exposición; las reglas financieras estrictas dejan esa exposición pendiente hasta contar con datos actuales. Las fuentes primarias observadas sobre el mandato tienen prioridad educativa frente a una etiqueta amplia del catálogo, sin presentar el fondo como selección financiera. Si moneda, costos, acceso, liquidación u otros datos de operación faltan, la ficha lo indica como pendiente. Estas fichas explican una clase de instrumento y permanecen separadas de la decisión financiera estricta.
 
 ## Identificadores auditables
 

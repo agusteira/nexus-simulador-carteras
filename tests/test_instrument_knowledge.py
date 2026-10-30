@@ -3,7 +3,7 @@ import unittest
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from nexus.instrument_knowledge import KnowledgeStore, load_universe, normalize_fund
+from nexus.instrument_knowledge import KnowledgeStore, decorate_fund, load_universe, normalize_fund
 
 
 class KnowledgeTests(unittest.TestCase):
@@ -14,6 +14,15 @@ class KnowledgeTests(unittest.TestCase):
         self.assertIn("CEDEAR:MELI:BYMA", ids)
         self.assertIn("CRYPTO:BTC:BITCOIN", ids)
         self.assertIn("CRYPTO_FUND:IBIT:NASDAQ", ids)
+        familiar_ids = {x["canonical_id"] for x in items if x["familiar"]}
+        self.assertIn("ETF:SPY:NYSE_ARCA", familiar_ids)
+        self.assertIn("FOREIGN_SHARE:MELI:NASDAQ", familiar_ids)
+        self.assertIn("LOCAL_SHARE:YPFD:BYMA", familiar_ids)
+        self.assertIn("ADR:YPF:NYSE", familiar_ids)
+        self.assertIn("CRYPTO:BTC:BITCOIN", familiar_ids)
+        self.assertNotIn("CRYPTO_FUND:IBIT:NASDAQ", familiar_ids)
+        self.assertTrue(all("no afirma que la persona lo conozca" in x["familiarity_basis"] for x in items if x["familiar"]))
+        self.assertTrue(all(x["market_metric"] is None for x in items))
         self.assertNotEqual(next(x for x in items if x["canonical_id"].startswith("CRYPTO:"))["canonical_id"],
                             next(x for x in items if x["canonical_id"].startswith("CRYPTO_FUND:"))["canonical_id"])
         items[0]["name"] = "mutated"
@@ -77,6 +86,34 @@ class KnowledgeTests(unittest.TestCase):
             store.save({"canonical_id":"ETF:SAFE:NYSE","evidence":[{"expires_at":"bad-time"}]})
             self.assertEqual(store.latest("ETF:SAFE:NYSE")["validation_status"], "expired")
             with self.assertRaises(ValueError): store.save({"canonical_id":"ETF:NAN:NYSE","value":float("nan")})
+
+    def test_fima_education_exact_names_class_suffixes_and_separate_classes(self):
+        def record(name, cls):
+            return normalize_fund({"fondoId":"same", "claseId":cls, "nombre":name, "fecha":"2026-10-29", "tipoRenta":"Renta Fija", "inversionMinima":1},
+                {"fuente":"API","url":"https://example.test","consultado_en":"2026-10-29T12:00:00+00:00"}, today=date(2026,10,29))
+        premium_a=record("FÍMA   PREMIUM - Clase A", "A")
+        premium_b=record("FimaPremium -ClaseB", "B")
+        self.assertEqual(premium_a["education_id"], "FIMA_PREMIUM")
+        self.assertEqual(premium_b["education_id"], "FIMA_PREMIUM")
+        self.assertNotEqual(premium_a["canonical_id"], premium_b["canonical_id"])
+        self.assertIsNone(premium_a["category"])
+        self.assertEqual(premium_a["exposure"], "unknown")
+        self.assertIsNone(premium_a["minimum"])
+        self.assertIn("minimum",premium_a["missing_fields"])
+        curated=[e for e in premium_a["evidence"] if e["kind"]=="curated"]
+        self.assertEqual(len(curated),1)
+        self.assertIn("category_hint",curated[0]["fields"])
+        self.assertNotIn("category",curated[0]["fields"])
+        self.assertFalse(any(e["kind"]=="observed" and "category" in e["fields"] for e in premium_a["evidence"]))
+        raw_api=next(e for e in premium_a["evidence"] if e["kind"]=="observed")
+        self.assertEqual(raw_api["raw_source_fields"]["inversionMinima"],1)
+        self.assertNotIn("minimum",raw_api["fields"])
+        self.assertNotIn("education_id", decorate_fund({"name":"Fima Premium Plus"}))
+        self.assertNotIn("education_id", decorate_fund({"name":"Mi Fima Premium del mes"}))
+        self.assertNotIn("education_id", decorate_fund({"name":"Fima Renta en Pesos II"}))
+        self.assertEqual(decorate_fund({"name":"  fima RENTA en pesos clase C "})["education_id"],"FIMA_RENTA_PESOS")
+        self.assertEqual(decorate_fund({"name":"FimaRentaPesos -ClaseA"})["education_id"],"FIMA_RENTA_PESOS")
+        self.assertEqual(decorate_fund({"name":"FimaCapitalPlus -ClaseC"})["education_id"],"FIMA_CAPITAL_PLUS")
 
 
 if __name__ == "__main__": unittest.main()

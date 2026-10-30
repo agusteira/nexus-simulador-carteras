@@ -11,6 +11,7 @@ import unicodedata
 from .matrices import CATEGORIAS, directorio_datos
 
 UNIVERSE_PATH = Path(__file__).resolve().parents[1] / "config" / "instrument_universe.json"
+FUND_EDUCATION_PATH = Path(__file__).resolve().parents[1] / "config" / "fund_education.json"
 _ID = re.compile(r"^[A-Z0-9][A-Z0-9:_./-]{1,127}$")
 _FIELDS = ("canonical_id", "instrument_type", "ticker", "market", "stable_id", "underlying_id", "name", "category", "exposure", "quotation_currency", "subscription_currency", "economic_currency", "minimum", "lot_size", "unit_price", "costs", "settlement_days", "liquidity", "access", "issuer", "sector", "country", "holdings", "description", "risks", "familiar", "familiarity_basis", "market_metric", "validation_status", "contradictions", "missing_fields", "evidence")
 
@@ -23,6 +24,55 @@ def load_universe():
 
 
 UNIVERSE_VERSION = json.loads(UNIVERSE_PATH.read_text(encoding="utf-8"))["version"]
+_FUND_EDUCATION = json.loads(FUND_EDUCATION_PATH.read_text(encoding="utf-8"))
+FUND_EDUCATION_VERSION = _FUND_EDUCATION["version"]
+
+
+def _fold_name(value):
+    value = "".join(c for c in unicodedata.normalize("NFKD", str(value or "")) if not unicodedata.combining(c))
+    value = " ".join(re.sub(r"[^a-zA-Z0-9]+", " ", value.casefold()).split())
+    value = re.sub(r"\s+(?:-\s*)?clase\s*[a-z0-9]+$", "", value)
+    value = re.sub(r"\s+[a-z]$", "", value)
+    return value.strip()
+
+
+_FAMILY_BY_ALIAS = {
+    _fold_name(alias): family
+    for family in _FUND_EDUCATION["families"]
+    for alias in family["aliases"]
+}
+
+
+def _family_for_fund_name(name):
+    return _FAMILY_BY_ALIAS.get(_fold_name(name))
+
+
+def decorate_fund(record):
+    """Add reviewed education cues for exact known fund-family names only.
+
+    Hints stay separate from source-backed `category` and `exposure` facts.
+    """
+    result = deepcopy(record)
+    family = _family_for_fund_name(result.get("name"))
+    if not family:
+        return result
+    fields = {
+        "education_id": family["education_id"], "familiar": True,
+        "familiarity_basis": family["familiarity_basis"],
+        "educational_description": family["educational_description"],
+        "education_source_url": family["source_url"],
+        "category_hint": family["category_hint"], "exposure_hint": family["exposure_hint"],
+        "education_version": FUND_EDUCATION_VERSION,
+    }
+    result.update(fields)
+    evidence = list(result.get("evidence") or [])
+    curated = {"source": "Fima/Galicia educational catalog", "url": family["source_url"],
+               "fields": deepcopy(fields), "observed_at": _FUND_EDUCATION["reviewed_at"],
+               "data_date": None, "expires_at": None, "kind": "curated", "version": FUND_EDUCATION_VERSION}
+    if not any(ev.get("kind") == "curated" and ev.get("fields", {}).get("education_id") == family["education_id"] for ev in evidence if isinstance(ev, dict)):
+        evidence.append(curated)
+    result["evidence"] = evidence
+    return result
 
 
 def _iso_date(value):
@@ -92,7 +142,7 @@ def normalize_fund(fund, source, today=None):
     backed = {"canonical_id": f"AR:FCI:{fund_id}:{class_id}", "instrument_type": "FCI", "market": "AR:FCI", "underlying_id": f"AR:FCI:{fund_id}"}
     if isinstance(fund.get("nombre"), str): backed["name"] = fund["nombre"]
     if source_type: backed["instrument_type"] = "FCI"
-    if "tipoRenta" in fund:
+    if source_type in ("variable", "money_market"):
         backed["category"] = cat
         backed["exposure"] = exposure
     if currency: backed["quotation_currency"] = currency
@@ -104,7 +154,7 @@ def normalize_fund(fund, source, today=None):
                  "raw_source_fields": raw, "observed_at": observed, "data_date": data_date, "expires_at": expires, "kind": "observed", "version": str(source.get("version", "1"))}] if raw else []
     invalid = [key for key in ("inversionMinima", "plazoLiquidacionDias") if key in fund and fund[key] is not None and not _valid_num(fund[key])]
     name = fund.get("nombre") if isinstance(fund.get("nombre"), str) else None
-    return {"canonical_id": f"AR:FCI:{fund_id}:{class_id}", "instrument_type": "FCI", "ticker": None, "market": "AR:FCI",
+    result = {"canonical_id": f"AR:FCI:{fund_id}:{class_id}", "instrument_type": "FCI", "ticker": None, "market": "AR:FCI",
             "stable_id": None, "underlying_id": f"AR:FCI:{fund_id}", "name": name, "category": cat, "exposure": exposure,
             "quotation_currency": currency, "subscription_currency": subcurrency, "economic_currency": None,
             "minimum": minimum, "lot_size": None, "unit_price": None, "costs": None, "settlement_days": settlement,
@@ -115,6 +165,18 @@ def normalize_fund(fund, source, today=None):
                 "facts_used": ["instrument_type", "category"]},
             "validation_status": ("review" if invalid or not observed else "observed") if data_date and 0 <= (today - date.fromisoformat(data_date)).days <= 7 else "expired",
             "contradictions": [f"Valor fuente inválido: {key}" for key in invalid], "missing_fields": [x for x in ("quotation_currency" if currency is None else None, "subscription_currency" if subcurrency is None else None, "minimum" if minimum is None else None, "settlement_days" if settlement is None else None, "lot_size", "unit_price", "costs", "economic_currency", "holdings", "liquidity", "access") if x], "evidence": evidence}
+    result = decorate_fund(result)
+    if result.get("education_id"):
+        # The public API's Fima minimum has been observed to disagree with
+        # issuer class tables. Retain the raw API value as provenance, but do
+        # not expose it as an operational minimum for a named class.
+        result["minimum"] = None
+        if "minimum" not in result["missing_fields"]:
+            result["missing_fields"].append("minimum")
+        for item in result["evidence"]:
+            if item.get("kind") == "observed":
+                item.get("fields", {}).pop("minimum", None)
+    return result
 
 
 def _canonical(value):
@@ -189,19 +251,24 @@ class KnowledgeStore:
             return None
         item = json.loads(row["payload"])
         now = now or datetime.now(timezone.utc)
-        expired = False
+        has_fresh_observation = False
+        has_expiring_observation = False
         for e in item.get("evidence", []):
             expiry = e.get("expires_at")
             if not expiry:
                 continue
+            if e.get("kind") == "curated":
+                continue
+            has_expiring_observation = True
             try:
                 parsed = datetime.fromisoformat(expiry.replace("Z", "+00:00"))
                 if parsed.tzinfo is None:
                     parsed = parsed.replace(tzinfo=timezone.utc)
                 comparison_now = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
-                expired = expired or parsed <= comparison_now
+                has_fresh_observation = has_fresh_observation or parsed > comparison_now
             except (ValueError, AttributeError, TypeError):
-                expired = True
+                pass
+        expired = has_expiring_observation and not has_fresh_observation
         if expired and item.get("validation_status") != "review":
             item["validation_status"] = "expired"
         return deepcopy(item)

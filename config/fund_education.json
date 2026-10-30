@@ -1,0 +1,39 @@
+{
+  "version": "1.0.0",
+  "reviewed_at": "2026-10-29T00:00:00+00:00",
+  "families": [
+    {
+      "education_id": "FIMA_PREMIUM",
+      "aliases": ["Fima Premium", "FimaPremium", "Cuenta Fima"],
+      "source_url": "https://www.fondosfima.com.ar/es/personas/nuestros-fondos/plazo-fijo/fima-premium",
+      "provider_url": "https://www.fondosfima.com.ar/es/personas/nuestros-fondos/plazo-fijo/fima-premium.model.json",
+      "familiarity_basis": "Familia educativa Fima/Galicia, revisada en el catálogo institucional; no acredita que la persona conozca el fondo.",
+      "educational_description": "Fima Premium pertenece a la familia de fondos de dinero para caja cotidiana. El emisor describe inversiones en cuentas remuneradas, plazos fijos y cauciones; la composición puede cambiar y no se interpreta como una tenencia actual.",
+      "category_hint": "Liquidez inmediata",
+      "exposure_hint": "money_market",
+      "mandate_terms": ["cuentas remuneradas", "plazos fijos", "cauciones"]
+    },
+    {
+      "education_id": "FIMA_RENTA_PESOS",
+      "aliases": ["Fima Renta en Pesos", "Fima Renta Pesos", "FimaRentaPesos"],
+      "source_url": "https://www.fondosfima.com.ar/es/personas/nuestros-fondos/bonos-mediano-plazo/fima-renta-en-pesos",
+      "provider_url": "https://www.fondosfima.com.ar/es/personas/nuestros-fondos/bonos-mediano-plazo/fima-renta-en-pesos.model.json",
+      "familiarity_basis": "Familia educativa Fima/Galicia, revisada en el catálogo institucional; no acredita que la persona conozca el fondo.",
+      "educational_description": "Fima Renta en Pesos es una familia de renta fija en pesos vinculada por el emisor a referencias CER. Su mandato y cartera pueden cambiar; esta ficha no afirma una composición ni una cobertura inflacionaria efectiva actual.",
+      "category_hint": "Renta fija inflación",
+      "exposure_hint": "inflation",
+      "mandate_terms": ["cer", "tasa fija y variable"]
+    },
+    {
+      "education_id": "FIMA_CAPITAL_PLUS",
+      "aliases": ["Fima Capital Plus", "FimaCapitalPlus"],
+      "source_url": "https://www.fondosfima.com.ar/es/personas/nuestros-fondos/bonos-dollar-linked/fima-capital-plus",
+      "provider_url": "https://www.fondosfima.com.ar/es/personas/nuestros-fondos/bonos-dollar-linked/fima-capital-plus.model.json",
+      "familiarity_basis": "Familia educativa Fima/Galicia, revisada en el catálogo institucional; no acredita que la persona conozca el fondo.",
+      "educational_description": "Fima Capital Plus es una familia en pesos cuyo mandato publicado menciona instrumentos dollar-linked y sintéticos ligados al tipo de cambio. La etiqueta no verifica la exposición efectiva ni la cartera actual.",
+      "category_hint": "Renta fija cambiaria",
+      "exposure_hint": "fx",
+      "mandate_terms": ["dollar linked", "tipo de cambio"]
+    }
+  ]
+}

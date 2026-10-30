@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 POLICY_PATH = Path(__file__).resolve().parents[1] / "config" / "instrument_policy.json"
-POLICY_VERSION = "educational-1"
+POLICY_VERSION = "educational-2"
 _REQUIRED = ("canonical_id", "instrument_type", "market", "category", "exposure",
              "quotation_currency", "subscription_currency", "economic_currency",
              "minimum", "costs", "settlement_days", "liquidity", "access")
@@ -19,7 +19,7 @@ _TRADED = {"LOCAL_SHARE", "FOREIGN_SHARE", "ADR", "CEDEAR", "ETF", "CRYPTO", "CR
 _TYPES = {"FCI", "LOCAL_SHARE", "FOREIGN_SHARE", "ADR", "CEDEAR", "ETF", "CRYPTO", "CRYPTO_FUND"}
 _CATEGORY_EXPOSURE = {"Renta variable": "equity", "Renta fija inflación": "inflation",
                       "Renta fija cambiaria": "fx", "Liquidez inmediata": "money_market"}
-_IDENTITY_FIELDS = {"canonical_id", "instrument_type", "market", "ticker", "stable_id", "underlying_id", "name", "description"}
+_IDENTITY_FIELDS = {"canonical_id", "instrument_type", "market", "ticker", "stable_id", "underlying_id", "name", "description", "category", "exposure", "educational_role"}
 
 
 def load_policy():
@@ -123,6 +123,26 @@ def _concentration(record, context, field, today, max_age_days):
     return {"value": value, "total_weight_percent": total, "status": "known", "provenance": provenance}
 
 
+def _education_source_quality(record, today):
+    """Rank primary mandate evidence above a source's broad class label."""
+    evidence = _evidence(record, "category", today, 30)
+    exposure_evidence = _evidence(record, "exposure", today, 30)
+    primary_urls = []
+    for ev in evidence:
+        fields = ev.get("fields") if isinstance(ev.get("fields"), dict) else {}
+        source_type = ev.get("source_type", fields.get("source_type"))
+        scope = ev.get("scope", fields.get("scope"))
+        shared_source = any(other.get("url") == ev.get("url") and other.get("source") == ev.get("source")
+                            for other in exposure_evidence)
+        if not shared_source: continue
+        if source_type in ("issuer", "depositary", "exchange"):
+            label = "issuer_mandate" if source_type == "issuer" and scope == "mandate" else source_type
+            primary_urls.append((label, ev))
+    if primary_urls:
+        return 0, primary_urls[0][0], primary_urls[0][1]
+    return 1, "catalog_classification", evidence[0] if evidence else None
+
+
 def _eval(record, context, today, policy):
     r = deepcopy(record) if isinstance(record, dict) else {}
     reasons, rules, missing = [], [], []
@@ -137,11 +157,15 @@ def _eval(record, context, today, policy):
     if itype not in _TYPES: missing.append("instrument_type")
     max_age = policy.get("evidence_max_age_days", {}).get("fci" if itype == "FCI" else "identity", 7 if itype == "FCI" else 30)
     for field in _REQUIRED:
+        field_age = 30 if field in _IDENTITY_FIELDS else max_age
         if r.get(field) is None or r.get(field) == "" or r.get(field) == "unknown": missing.append(field)
-        elif not _evidence(r, field, today, max_age): missing.append(field + "_evidence")
-        if _has_conflicting_evidence(r, field, today, max_age):
+        elif not _evidence(r, field, today, field_age): missing.append(field + "_evidence")
+        if _has_conflicting_evidence(r, field, today, field_age):
             contradiction = True
             add("R_CONTRADICCION", f"Fuentes observadas discrepan sobre {field}.")
+    if itype == "FCI" and r.get("exposure_basis") == "mandate":
+        missing.append("actual_exposure_or_holdings")
+        add("R_EXPOSICION_SOLO_MANDATO", "La fuente confirma el mandato declarado, pero no la exposición actual de la cartera.")
     if itype in _TRADED:
         for field in ("lot_size", "unit_price"):
             if r.get(field) is None: missing.append(field)
@@ -187,8 +211,17 @@ def _eval(record, context, today, policy):
     profile, horizon, objective = context.get("profile"), context.get("horizon_months"), context.get("objective")
     is_equity = r.get("exposure") == "equity" or r.get("category") == "Renta variable"
     if is_equity and profile == "CONSERVADOR": add("R_PERFIL_EQUITY", "La política no admite renta variable para perfil conservador.")
-    if is_equity and _finite_num(horizon) and horizon < 36: add("R_HORIZONTE_EQUITY", "El horizonte es inferior a 36 meses.")
-    if is_equity and objective == "Preservacion": add("R_OBJETIVO_PRESERVACION", "El objetivo de preservación restringe renta variable.")
+    allocation_weight = context.get("allocation_weight")
+    if is_equity and not _finite_num(allocation_weight): missing.append("context.allocation_weight")
+    if is_equity and _finite_num(horizon) and _finite_num(allocation_weight):
+        caps = policy.get("equity_caps", {}).get("horizon_months", {})
+        limit = caps.get("under_12", 0) if horizon < 12 else (caps.get("12_to_35", 20) if horizon < 36 else None)
+        if limit is not None and allocation_weight > limit:
+            add("R_HORIZONTE_EQUITY", f"La asignación de renta variable supera el tope educativo de {limit}% para este horizonte.")
+    if is_equity and objective == "Preservacion" and _finite_num(allocation_weight):
+        limit = policy.get("equity_caps", {}).get("objectives", {}).get("Preservacion", 10)
+        if allocation_weight > limit:
+            add("R_OBJETIVO_PRESERVACION", f"La asignación de renta variable supera el tope educativo de {limit}% para preservación.")
     if context.get("tolerance") == 0 and is_equity: add("R_TOLERANCIA_EQUITY", "La tolerancia declarada no admite renta variable.")
     cash = r.get("category") == "Liquidez inmediata"
     requires_immediate = cash or (_finite_num(context.get("liquidity_required")) and context["liquidity_required"] >= policy.get("liquidity_required_immediate_at_or_above", 50))
@@ -224,6 +257,7 @@ def _eval(record, context, today, policy):
     if not _finite_num(horizon) or horizon <= 0: missing.append("context.horizon_months")
     if objective not in ("Preservacion", "Crecimiento", "Renta"): missing.append("context.objective")
     if not _finite_num(budget) or budget < 0: missing.append("context.budget")
+    if is_equity and not _finite_num(allocation_weight): missing.append("context.allocation_weight")
     if not isinstance(currency, str) or not currency or currency == "unknown": missing.append("context.currency")
     if not _finite_num(context.get("tolerance")) or not 0 <= context["tolerance"] <= 100: missing.append("context.tolerance")
     if not _finite_num(context.get("liquidity_required")) or not 0 <= context["liquidity_required"] <= 100: missing.append("context.liquidity_required")
@@ -254,6 +288,170 @@ def _eval(record, context, today, policy):
             "rule_ids": rules, "reasons": reasons, "missing_fields": sorted(set(missing)), "ranking_factors": factors,
             "policy_version": policy.get("version", POLICY_VERSION), "expert_review": "pending", "record": r,
             "concentration_checks": concentration_checks}
+
+
+def build_educational_selection(records, context, *, today=None, policy=None):
+    """Return researched class references, explicitly separate from eligibility.
+
+    Identity and classification must be observed. Unknown operational facts may
+    be disclosed on an educational card but can never establish financial fit.
+    """
+    policy = policy or load_policy()
+    today = today or datetime.now(timezone.utc).date()
+    context = context or {}
+    cards, excluded = [], []
+    currency = context.get("currency")
+    broad_underlyings = {r.get("underlying_id") for r in records if isinstance(r, dict)
+                         and r.get("educational_role") == "index_basket" and r.get("underlying_id")
+                         and _evidence(r, "educational_role", today, 30) and _evidence(r, "underlying_id", today, 30)}
+    for raw in records:
+        record = deepcopy(raw) if isinstance(raw, dict) else {}
+        strict = _eval(record, context, today, policy)
+        cid = record.get("canonical_id")
+        def reject(rule, reason):
+            excluded.append({"canonical_id": cid, "name": record.get("name"), "decision": strict["decision"],
+                             "education_id": record.get("education_id"), "familiar": record.get("familiar"),
+                             "familiarity_basis": record.get("familiarity_basis"),
+                             "educational_description": record.get("educational_description"),
+                             "rule_ids": list(dict.fromkeys(strict["rule_ids"] + [rule])), "reasons": strict["reasons"] + [reason]})
+        if record.get("validation_status") in ("review", "expired") or record.get("contradictions"):
+            reject("R_REFERENCIA_REVISION", "La referencia está vencida o requiere revisión; no se muestra como referencia verificada.")
+            continue
+        if record.get("instrument_type") in ("CRYPTO", "CRYPTO_FUND") or record.get("exposure") == "bitcoin":
+            reject("R_CRYPTO_POLICY", "La política educativa no asigna referencias con exposición cripto o Bitcoin.")
+            continue
+        if record.get("category") != context.get("category") and record.get("category") in _CATEGORY_EXPOSURE and _evidence(record, "category", today, 30):
+            reject("R_CATEGORIA_INCOMPATIBLE", "La clasificación observada corresponde a otra categoría de la cartera.")
+            continue
+        classification_ok = (record.get("category") == context.get("category")
+                             and record.get("exposure") == _CATEGORY_EXPOSURE.get(context.get("category"))
+                             and bool(_evidence(record, "category", today, 30))
+                             and bool(_evidence(record, "exposure", today, 30)))
+        # A display name may be a curated label; stable identity is established
+        # by observed canonical ID, type and market, not the presentation text.
+        identity_fields = ("canonical_id", "instrument_type", "market")
+        identity_ok = all(record.get(field) not in (None, "") and _evidence(record, field, today, 30) for field in identity_fields)
+        if not identity_ok or not classification_ok:
+            if record.get("reference_status") == "source_unavailable":
+                detail = "La fuente educativa no respondió; la categoría o exposición observada no pudo confirmarse."
+            elif record.get("reference_status") == "unsupported":
+                detail = "No hay una fuente educativa aprobada para confirmar esta categoría o exposición."
+            else:
+                detail = record.get("category_hint") or record.get("exposure_hint") or "La fuente no confirmó identidad y categoría/exposición del instrumento."
+            reject("R_REFERENCIA_CLASE_NO_VERIFICADA", f"No se muestra como referencia verificada: {detail} Una etiqueta curada por sí sola no verifica la clase.")
+            continue
+        # Currency exclusions only use values backed by current observed facts.
+        quote_known = bool(record.get("quotation_currency") and record.get("quotation_currency") != "unknown"
+                           and _evidence(record, "quotation_currency", today, 30))
+        sub_known = bool(record.get("subscription_currency") and record.get("subscription_currency") != "unknown"
+                         and _evidence(record, "subscription_currency", today, 30))
+        known_currency = quote_known and sub_known
+        if quote_known and sub_known and record["quotation_currency"] != record["subscription_currency"]:
+            reject("R_MONEDA_INCOMPATIBLE", "La fuente observó monedas de cotización y suscripción distintas.")
+            continue
+        if currency not in (None, "", "unknown") and ((quote_known and record["quotation_currency"] != currency)
+                                                        or (sub_known and record["subscription_currency"] != currency)):
+            reject("R_MONEDA_INCOMPATIBLE", "La moneda observada no coincide con la moneda solicitada.")
+            continue
+        # Exclude a hard budget contradiction only when the lower bound is evidenced.
+        budget, minimum = context.get("budget"), record.get("minimum")
+        known_minimum = _finite_num(minimum) and bool(_evidence(record, "minimum", today, 7 if record.get("instrument_type") == "FCI" else 30))
+        known_lot = (_finite_num(record.get("lot_size")) and _finite_num(record.get("unit_price"))
+                     and bool(_evidence(record, "lot_size", today, 1)) and bool(_evidence(record, "unit_price", today, 1)))
+        lower_bound = minimum if known_minimum else 0
+        if known_lot: lower_bound = max(lower_bound, record["lot_size"] * record["unit_price"])
+        known_costs = (_finite_num(record.get("costs")) and bool(_evidence(record, "costs", today, 30)))
+        if known_costs and lower_bound > 0: lower_bound += record["costs"]
+        if _finite_num(budget) and lower_bound > 0 and budget < lower_bound:
+            reject("R_PRESUPUESTO_MINIMO", "El presupuesto conocido no alcanza el mínimo operativo publicado.")
+            continue
+        allowed = context.get("allowed_access")
+        if (record.get("access") in ("local", "international") and isinstance(allowed, list)
+                and record["access"] not in allowed and _evidence(record, "access", today, 30)):
+            reject("R_ACCESO_INCOMPATIBLE", "El acceso observado no está habilitado para esta búsqueda.")
+            continue
+        immediate_required = (context.get("category") == "Liquidez inmediata"
+                              or (_finite_num(context.get("liquidity_required")) and context["liquidity_required"] >= policy.get("liquidity_required_immediate_at_or_above", 50)))
+        if immediate_required:
+            settlement_known = _finite_num(record.get("settlement_days")) and bool(_evidence(record, "settlement_days", today, 30))
+            liquidity_known = bool(record.get("liquidity") and _evidence(record, "liquidity", today, 30))
+            if settlement_known and record["settlement_days"] > 0:
+                reject("R_LIQUIDEZ_INMEDIATA", "La fuente observó un plazo mayor que cero días.")
+                continue
+            if liquidity_known and record["liquidity"] not in ("immediate", "unknown"):
+                reject("R_LIQUIDEZ_INMEDIATA", "La fuente observó liquidez que no es inmediata.")
+                continue
+        if any(rule in strict["rule_ids"] for rule in ("R_PERFIL_EQUITY", "R_HORIZONTE_EQUITY", "R_OBJETIVO_PRESERVACION", "R_TOLERANCIA_EQUITY")):
+            reject(next(rule for rule in strict["rule_ids"] if rule.startswith(("R_PERFIL_EQUITY", "R_HORIZONTE_EQUITY", "R_OBJETIVO_PRESERVACION", "R_TOLERANCIA_EQUITY"))),
+                   "La exposición no cabe en el límite educativo de esta cartera.")
+            continue
+        missing = sorted(set(strict["missing_fields"]) - {x for x in strict["missing_fields"] if x.startswith("context.") or x in ("category_evidence", "exposure_evidence", "category_or_exposure")})
+        if not known_currency: missing = sorted(set(missing + ["quotation_currency", "subscription_currency", "economic_currency"]))
+        if currency in (None, "", "unknown"): missing = sorted(set(missing + ["context.currency"]))
+        operation_fields = {"minimum", "costs", "lot_size", "unit_price", "settlement_days", "liquidity", "access", "economic_currency", "actual_exposure_or_holdings"}
+        pending = any(field in missing or any(field + "_" in x for x in missing) for field in operation_fields)
+        currency_status = "match" if known_currency and currency == record.get("quotation_currency") else ("unknown" if not known_currency or currency in (None, "", "unknown") else "not_applicable")
+        source_quality, source_type, mandate_evidence = _education_source_quality(record, today)
+        if not strict["eligible"] and source_quality != 0:
+            if record.get("reference_status") == "source_unavailable":
+                reason = "La fuente primaria no respondió. El catálogo aporta una clase amplia, pero no una explicación o composición contrastada."
+            else:
+                reason = "El catálogo aporta clase y moneda, pero no una explicación o composición contrastada."
+            reject("R_REFERENCIA_EXPEDIENTE_BASICO", reason)
+            continue
+        mandate_only = record.get("instrument_type") == "FCI" and record.get("exposure_basis") == "mandate"
+        if mandate_only:
+            reason = (f"Referencia educativa de {record.get('category')}: el emisor describe el mandato, pero la exposición actual de la cartera no está verificada. "
+                      "No es una selección financiera.")
+        elif source_quality == 0:
+            reason = (f"Referencia educativa de {record.get('category')}: una fuente primaria ({source_type}) verificó identidad y clasificación. "
+                      "No es una selección financiera; los datos operativos pendientes deben verificarse.")
+        else:
+            reason = (f"Referencia educativa de {record.get('category')}: el catálogo verificó una clasificación amplia. "
+                      "No es una selección financiera; los datos operativos pendientes deben verificarse.")
+        card = deepcopy(record)
+        card.update({"reason": reason, "missing_fields": missing,
+                     "operational_status": "operación pendiente" if pending else "datos operativos observados; elegibilidad no validada",
+                     "currency_status": currency_status,
+                     "reference_source_type": source_type,
+                     "reference_source_quality": source_type if source_quality == 0 else "catalog_classification",
+                     "exposure_status": "mandate_only" if mandate_only else "classification_observed",
+                     "evidence": [ev for ev in record.get("evidence", []) if ev.get("kind") == "observed"]})
+        # Currency certainty and observed operational coverage precede familiarity.
+        verified_operational = sum(bool(_evidence(record, field, today, 30)) for field in
+                                   ("minimum", "costs", "settlement_days", "liquidity", "access", "economic_currency"))
+        normalized_name = (record.get("name") or "").casefold().strip()
+        class_a = 0 if normalized_name.endswith(("clase a", "-a", " a")) else 1
+        familiarity = 0 if record.get("familiar") is True and record.get("familiarity_basis") else 1
+        route_priority = 9
+        kind, ticker = record.get("instrument_type"), (record.get("ticker") or "").upper()
+        if currency == "ARS":
+            route_priority = {("CEDEAR", "SPY"): 0, ("CEDEAR", "MELI"): 1, ("LOCAL_SHARE", "YPFD"): 2,
+                              ("ADR", "YPF"): 4, ("FOREIGN_SHARE", "MELI"): 5}.get((kind, ticker), 3 if kind == "CEDEAR" else 9)
+        elif currency == "USD":
+            route_priority = {("ETF", "SPY"): 0, ("FOREIGN_SHARE", "MELI"): 1, ("ADR", "YPF"): 2}.get((kind, ticker), 5)
+        else:
+            route_priority = {("ETF", "SPY"): 0, ("CEDEAR", "SPY"): 1, ("FOREIGN_SHARE", "MELI"): 2,
+                              ("CEDEAR", "MELI"): 3, ("LOCAL_SHARE", "YPFD"): 4, ("ADR", "YPF"): 5}.get((kind, ticker), 9)
+        broad_index = (0 if record.get("educational_role") == "index_basket" and _evidence(record, "educational_role", today, 30)
+                       else (0 if record.get("underlying_id") in broad_underlyings and _evidence(record, "underlying_id", today, 30) else 1))
+        cards.append((0 if strict["eligible"] else 1, source_quality, route_priority, broad_index,
+                      0 if currency_status == "match" else 1, -verified_operational, class_a, familiarity, str(cid or ""), card))
+    cards.sort(key=lambda item: item[:-1])
+    selected_cards, seen_classes = [], set()
+    for item in cards:
+        card = item[9]
+        class_key = card.get("education_id") or card.get("underlying_id") or card.get("canonical_id")
+        if class_key in seen_classes: continue
+        seen_classes.add(class_key)
+        card["description"] = card.get("description") or card.get("educational_description") or (card.get("explanation") or {}).get("text")
+        selected_cards.append(card)
+        if len(selected_cards) == 2: break
+    reasons = (["Se muestran referencias educativas verificadas por identidad y clasificación; no equivalen a una recomendación financiera."]
+               if selected_cards else ["No hay una referencia con identidad y categoría/exposición observadas suficientes."])
+    return {"status": "REFERENCIA_EDUCATIVA" if selected_cards else "SIN_REFERENCIA_VERIFICADA",
+            "cards": selected_cards, "excluded": excluded, "rule_ids": [], "reasons": reasons,
+            "policy_version": policy.get("version", POLICY_VERSION), "expert_review": "pending"}
 
 
 def evaluate_candidate(record, context, *, today=None, policy=None):

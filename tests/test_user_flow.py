@@ -193,7 +193,7 @@ class UserFlowTest(unittest.TestCase):
         self.navigate("resultado")
         self.assertEqual(self.source_mock.call_count, 1)
         self.assertEqual(self.app.session_state["resultado_robo"]["ejemplos_instrumentos"], saved)
-        self.click("Actualizar ejemplos")
+        self.click("Actualizar investigación")
         self.assertEqual(self.source_mock.call_count, 2)
         self.assertTrue(self.source_mock.call_args.kwargs["refresh"])
         self.navigate("perfil")
@@ -215,7 +215,7 @@ class UserFlowTest(unittest.TestCase):
         self.navigate("inicio")
         self.navigate("resultado")
         self.assertEqual(self.source_mock.call_count, 1)
-        self.click("Reintentar consulta")
+        self.click("Actualizar investigación")
         self.assertEqual(self.source_mock.call_count, 2)
 
     def test_failed_catalog_shows_one_warning_and_retry_recovers(self):
@@ -224,21 +224,20 @@ class UserFlowTest(unittest.TestCase):
         self.source_mock.side_effect = [MarketDataError("Fixture offline: sin conexión"), good]
         self.fill_profile()
         self.evaluate()
-        self.assertEqual(len(self.app.warning), 1)
-        self.assertEqual(self.app.warning[0].value, "No pudimos cargar el catálogo de fondos. Reintentá la consulta.")
+        self.assertFalse(self.app.warning)
         # Reference research remains inspectable when the FCI catalog fails;
         # source-specific examples must not claim that funds were retrieved.
         saved = self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]
         self.assertFalse(saved["fuentes"])
         self.assertTrue(saved["investigacion"]["educational_universe"])
         self.assertTrue(all(not c["ejemplos"] and not c["alternativas"] for c in saved["categorias"]))
-        self.assertEqual(len([b for b in self.app.button if "Reintentar consulta" in b.label]), 1)
-        self.click("Reintentar consulta")
+        self.assertEqual(len([b for b in self.app.button if "Actualizar investigación" in b.label]), 1)
+        self.click("Actualizar investigación")
         self.assertEqual(self.source_mock.call_count, 2)
         self.assertFalse(self.app.warning)
         self.assertTrue(self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]["fuentes"])
 
-    def test_alternative_funds_are_visible_without_generic_info(self):
+    def test_legacy_fci_alternatives_are_not_rendered_as_investigated_cards(self):
         today = datetime.now(timezone.utc).date().isoformat()
         self.source_mock.return_value = {
             "fondos": [{"nombre": "Renta fija alternativa", "fondoId": "2", "claseId": "3", "fecha": today,
@@ -248,10 +247,9 @@ class UserFlowTest(unittest.TestCase):
             "consultado_en": today + "T00:00:00+00:00", "fecha_publicacion": today + "T00:00:00+00:00"}
         self.fill_profile()
         self.evaluate()
-        content = " ".join(item.value for item in self.app.markdown if isinstance(item.value, str))
-        self.assertIn("alternativas para investigar", content)
-        self.assertIn("Renta fija alternativa", content)
-        self.assertFalse(any("No pudimos verificar un instrumento que cumpla" in item.value for item in self.app.info))
+        visible = " ".join(item.value for item in [*self.app.markdown, *self.app.text] if isinstance(item.value, str))
+        self.assertIn("Instrumentos para entender tu cartera", visible)
+        self.assertNotIn("Renta fija alternativa", visible)
 
     def test_zero_results_explain_currency_and_category_budget_together(self):
         today = datetime.now(timezone.utc).date().isoformat()
@@ -268,14 +266,11 @@ class UserFlowTest(unittest.TestCase):
         self.fill_profile()
         self.evaluate()
         labels = [item.label for item in self.app.expander]
-        variable_status = next(label for label in labels if label.startswith("Renta variable ·"))
-        self.assertIn("Sin opciones para este monto", variable_status)
-        infos = " ".join(item.value for item in self.app.info)
-        self.assertIn("registros con moneda distinta o sin confirmar", infos)
-        self.assertIn("registros con mínimo superior al monto de esta categoría", infos)
-        captions = " ".join(item.value for item in self.app.caption)
-        self.assertIn("Monto asignado a esta categoría:", captions)
-        self.assertIn("ARS", captions)
+        saved = self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]
+        variable = next(item for item in saved["categorias"] if item["categoria"] == "Renta variable")
+        self.assertEqual(variable["diagnostico"]["descartados"]["moneda"], 1)
+        self.assertEqual(variable["diagnostico"]["descartados"]["minimo_superior"], 1)
+        self.assertTrue(any(label.startswith("Renta variable ·") and "Sin una referencia verificada" in label for label in labels))
 
     def test_legacy_saved_examples_render_fallback_without_requery(self):
         self.fill_profile()
@@ -285,10 +280,12 @@ class UserFlowTest(unittest.TestCase):
         for category in saved["categorias"]:
             category.pop("diagnostico", None)
             category.pop("monto_asignado", None)
+        for category in saved["investigacion"]["categories"]:
+            category.pop("educational_selection", None)
         self.navigate("auditoria")
         self.navigate("resultado")
         self.assertEqual(self.source_mock.call_count, 1)
-        self.assertTrue(any("no incluye motivos de descarte" in item.value for item in self.app.info))
+        self.assertTrue(any("formato de fichas educativas" in item.value for item in self.app.info))
         self.assert_clean()
 
     def test_example_scenarios_update_draft_and_evaluation(self):
