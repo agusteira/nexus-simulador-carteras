@@ -13,6 +13,8 @@ PROFILE_FIELDS = {
     "objetivo": ("perfil_objetivo", "Preservacion"),
     "tolerancia": ("perfil_tolerancia", 10),
     "liquidez": ("perfil_liquidez", 20),
+    # Preserve the optional declaration in existing sessions; the current
+    # recommendation scope is Argentina and does not require a broker account.
     "acceso": ("perfil_acceso", []),
 }
 
@@ -118,14 +120,7 @@ def render():
         )
         if "horizonte" in errors:
             st.error(errors["horizonte"])
-        st.multiselect(
-            "¿A qué mercados tenés acceso? (opcional)",
-            ["local", "international"],
-            format_func=lambda value: {"local": "Argentina", "international": "Exterior"}[value],
-            key="perfil_acceso",
-            on_change=_sync_draft,
-            help="Declaralo solo si lo conocés. Esto no confirma que tu intermediario ofrezca cada instrumento. Si no lo informás, la selección queda pendiente de ese dato.",
-        )
+        st.caption("Mercado de esta simulación: Argentina. La selección de instrumentos es independiente del broker.")
     with right, st.container(border=True):
         st.markdown("## Lo que necesitás")
         objetivo = st.selectbox(

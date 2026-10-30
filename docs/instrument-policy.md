@@ -1,56 +1,42 @@
-# Política educativa de instrumentos
+# Política de recomendación de instrumentos
 
-La versión `educational-3` es una regla determinista de cribado y compatibilidad operativa. **No está validada por especialistas**, no certifica elegibilidad financiera y no constituye asesoramiento ni recomendación personalizada. `expert_review` permanece `pending`.
+La política `argentina-4` compara instrumentos identificados en el mercado argentino con hechos publicados y contexto congelado del escenario. La selección del instrumento es distinta de comprobar una orden en un intermediario. No demuestra que un usuario pueda operar un activo, no valida una cuenta concreta y no constituye validación profesional. `expert_review` permanece `pending`.
 
-## Orden de decisión
+## Alcance y salidas
 
-| Prioridad | Resultado | Regla |
-| --- | --- | --- |
-| 1 | Requiere revisión | Contradicciones entre fuentes o valores numéricos imposibles/ inválidos. |
-| 2 | Excluir candidato | Cripto/BTC, categoría o moneda incompatible, presupuesto mínimo insuficiente, acceso no disponible, riesgo incompatible, solapamiento o liquidación fuera del horizonte. |
-| 3 | Información insuficiente | Identidad, datos operativos, moneda económica o evidencia observada faltante, vencida o futura. |
-| 4 | Conservar candidato | Solo con requisitos verificables completos y sin una exclusión conocida. |
+La investigación usa `selection_scope=ARGENTINA_SIN_BROKER` y `schema_version=4`. Solo `selected` es la selección. `educational_selection`, si se mantiene por compatibilidad, es exactamente una proyección de `selected`; nunca genera tarjetas por separado. La comprobación estricta anterior sigue disponible en `STRICT_EXECUTION` y en la evaluación directa predeterminada de reglas.
 
-Las contradicciones y datos numéricos inválidos requieren revisión; luego prevalecen las exclusiones conocidas sobre los campos faltantes para no ocultar incompatibilidades. Una cadena descriptiva o estado `validated` no sustituye evidencia: cada valor operativo requerido debe coincidir con un campo de evidencia observada que incluya fuente, URL HTTPS, fecha de observación con zona horaria y no futura, y vencimiento posterior a la observación. Los datos de identidad admiten fecha de datos ausente y se validan con antigüedad de observación de hasta 30 días; no se inventa una fecha de publicación. Los datos financieros requieren fecha de datos vigente: información de FCI hasta 7 días y precio de acciones, ADR, CEDEAR y ETF de hoy o del día anterior. Los FCI no requieren precio por unidad. Una fuente curada puede aportar contexto, pero no prueba elegibilidad.
+Cada evaluación de recomendación informa `decision`, `eligible`, `missing_fields`, `selection_explanation` y factores de ranking observables. `execution_checks.status=PENDIENTE_INTERMEDIARIO` conserva pendientes de broker, aranceles, moneda y canal de suscripción, autorización de cuenta, precio final, cantidad y liquidación. No se inventan costos cero, moneda de fondeo o autorización.
 
-## Umbrales ilustrativos
+Se evalúan FCI argentinos y acciones locales/CEDEAR identificados por fuentes como instrumentos BYMA. Fondos o valores externos, cripto, ETF, representaciones no ordinarias y exposición no identificada no entran por familiaridad o nombre. Moneda de cotización/denominación debe coincidir con la moneda simulada; no se presupone conversión.
 
-- Criptoactivos y cualquier vehículo con exposición `bitcoin` quedan excluidos.
-- Los límites de renta variable se aplican a la asignación de la categoría: perfil conservador y tolerancia cero la excluyen; el tope es 0% antes de 12 meses, 20% entre 12 y 35 meses y el tope de matriz desde 36 meses. Con objetivo `Preservacion`, el tope es 10%, no una exclusión automática. La cartera mueve el excedente a liquidez inmediata. No se cambia la matriz base ni se aumenta riesgo por objetivo `Crecimiento` o `Renta`.
-- Una necesidad de liquidez de 50% o más requiere liquidación acreditada como `immediate` y liquidación en cero días. `daily` y T+0 no prueban disponibilidad inmediata.
-- Los instrumentos de la categoría liquidez inmediata requieren siempre `immediate` y liquidación cero. La búsqueda también debe declarar moneda objetivo y lista de accesos permitidos; no se asumen.
-- El presupuesto se compara con el mayor entre mínimo y lote por precio, más costos conocidos. No se calcula cantidad a comprar.
-- Duplicados de subyacente o tenencias identificadas en común se excluyen por solapamiento. La familiaridad solo desempata después de riesgo, operación, diversificación y costos; no usa métricas de rendimiento.
-- La concentración muestra valor, peso sumado y estado `known`/`unknown` por emisor, sector, país y subyacente, con procedencia de evidencia fresca. Solo se aplican topes educativos cuando tanto los datos como los pesos están acreditados: emisor 50%, sector 75% y país 100%. El país de cotización/listado no se interpreta como país de exposición: requiere rol explícito `economic_exposure`. Para un FCI, la administradora no se cuenta como emisor económico; se necesita `issuer_role` respaldado como `economic_issuer` o `issuer`. Las tenencias solo mejoran la señal de diversificación si hay evidencia fresca de al menos dos subyacentes distintos.
+## FCI
 
-Los límites y umbrales son decisiones educativas provisionales y deben revisarse externamente antes de cualquier uso real. Los registros con concentración o tenencias desconocidas no reciben afirmaciones de diversificación. No se asume que dos listados de mercados distintos tengan el mismo precio o identidad.
+Se requiere evidencia vigente de identidad, categoría/exposición, moneda de clase, mínimo, plazo de liquidación, estado abierto del fondo y de la suscripción/rescate, condición de calificado y horizonte. El mínimo publicado y una comisión de ingreso publicada se usan como cota inferior de presupuesto; una tarifa del broker desconocida no bloquea la recomendación y permanece pendiente de ejecución. La suscripción en el broker y el dinero disponible para fondearla no se infieren de la moneda de denominación del FCI.
 
-## Referencias educativas
+Horizonte mínimo de CAFCI y duración se comprueban con los umbrales provisionales del simulador. Los fondos de renta fija necesitan duración publicada con evidencia vigente; el horizonte flexible solo pasa cuando esa duración está identificada y puede compararse con el horizonte del usuario. La categoría de liquidez inmediata exige clasificación de mercado de dinero y rescate T+0 informados; no implica disponibilidad 24/7 ni garantía de depósito. Los mandatos de inflación/cambiarios no bastan: hace falta una composición fechada de hasta 35 días con más de 50% de renglones explícitos identificables. La suma y clasificación se guardan como inferencia con su fecha, método y renglones fuente; los demás activos permanecen desconocidos.
 
-Solo `selected` representa una selección. Cada instrumento mostrado debe superar las mismas reglas estrictas y evidencias que determinan `selected`; una categoría conocida, familiaridad, etiqueta educativa o ficha explicativa nunca crea una selección aparte. Si los datos no alcanzan para elegir, no se muestran tarjetas. `educational_selection`, cuando se entrega por compatibilidad, es únicamente una proyección de `selected`. El universo curado y los indicios de búsqueda sirven para investigar candidatos, no prueban elegibilidad ni que el universo de búsqueda esté completo. El ranking compara los candidatos con datos y evidencia disponibles; la identidad canónica solo desempata resultados equivalentes.
+Para inflación se buscan términos completos BONCER, CER o UVA. Para FX se buscan etiquetas inequívocas como dollar-linked o vinculado al dólar. No se usa un ticker aislado, el nombre del fondo, una cuenta USD o `Fut Reg ARS` como prueba de exposición. Composición de hasta 7 días se presenta como reciente; entre 8 y 35 días se advierte que es la última publicada, no la cartera de hoy. No se consideran suficientes calificaciones crediticias antiguas como medida del riesgo total.
 
-## Identificadores auditables
+Los gastos anuales del fondo solo se derivan cuando se conocen sus componentes de administración y gasto ordinario. Las tasas de ingreso/rescate se conservan separadas. Campos ausentes no significan gratuidad.
 
-Las reglas registran todas las causas aplicables. La prioridad del resultado es revisión → exclusión → información insuficiente → elegibilidad; ordenar por familiaridad solo ocurre después de esa decisión.
+## Acciones y CEDEAR
 
-| Regla | Condición y resultado |
-| --- | --- |
-| `R_CONTRADICCION` | Fuentes vigentes discrepan sobre un campo o la ficha está en revisión: `REQUIERE_REVISION`. |
-| `R_DATO_NUMERICO_INVALIDO` | Mínimo, costo, plazo, lote o precio inválido, negativo o no finito: revisión. Lote/precio cero también es inválido. |
-| `R_CATEGORY_EXPOSURE_CONTRADICTION` | Categoría y exposición declaradas se contradicen: revisión. |
-| `R_CRYPTO_POLICY` | Criptoactivo o cualquier vehículo con exposición Bitcoin: exclusión mientras no exista política validada de asignación. |
-| `R_CATEGORIA_INCOMPATIBLE` | Categoría explícita distinta de la categoría investigada: exclusión. Categoría desconocida no prueba incompatibilidad ni compatibilidad. |
-| `R_MONEDA_INCOMPATIBLE` | Cotización/suscripción explícitas incompatibles entre sí o con la moneda original: exclusión. La exposición económica se evalúa por separado. |
-| `R_PRESUPUESTO_MINIMO` | Presupuesto menor que mínimo, lote × precio o el mayor de ambos más costos conocidos: exclusión; costos desconocidos no levantan una exclusión que ya prueba una cota inferior. |
-| `R_ACCESO_INCOMPATIBLE` | Acceso requerido fuera de la lista operativa conocida: exclusión. Falta de lista deja información insuficiente. |
-| `R_PERFIL_EQUITY`, `R_TOLERANCIA_EQUITY` | Renta variable con perfil conservador o tolerancia cero: exclusión. |
-| `R_HORIZONTE_EQUITY`, `R_OBJETIVO_PRESERVACION` | Renta variable antes de 36 meses o con objetivo preservación: exclusión del instrumento, conservando la distribución ilustrativa. |
-| `R_LIQUIDEZ_INMEDIATA` | La categoría de liquidez o necesidad ≥50% exige disponibilidad inmediata y plazo cero; una condición conocida contraria excluye. T+0 por sí solo no acredita disponibilidad. |
-| `R_PLAZO_LIQUIDACION` | Plazo conocido superior a horizonte × 30 días: exclusión. Es una aproximación de cribado educativo, no un calendario de liquidaciones. |
-| `R_OVERLAP` | Subyacente o tenencias respaldadas coinciden con una elección previa: exclusión por solapamiento; duplicados permanecen en la traza. |
-| `R_CONCENTRACION_EMISOR`, `R_CONCENTRACION_SECTOR`, `R_CONCENTRACION_PAIS` | Exposición hipotética respaldada y pesos conocidos superiores a 50%, 75% o 100% respectivamente: exclusión. El país debe representar exposición económica. No se confunde administradora de FCI con emisor de sus tenencias. |
-| `R_EVIDENCIA_INSUFICIENTE` | Campos, contexto, autorización operativa o evidencia válida faltantes: se documentan los faltantes y se impide seleccionar sin una exclusión prioritaria. |
-| `R_ELEGIBLE_EDUCATIVO` | Sin exclusiones ni faltantes obligatorios: conservar bajo la política educativa. No certifica idoneidad financiera. |
-| `R_ALTERNATIVA_COMPATIBLE` | Otro candidato elegible supera al inicial o este fue excluido: proponer alternativa con comparación explícita. |
-| `R_SIN_CANDIDATO_AMPLIAR` | Aún no hay elegibles y queda búsqueda compatible disponible: ampliar. El coordinador registra la ampliación y termina en información insuficiente/revisión si se agotan sus fuentes o límites. |
-| `R_ASIGNACION_HORIZONTE`, `R_ASIGNACION_OBJETIVO` | Aplicar topes agregados configurados, mover excedente a liquidez y registrar porcentajes antes/después. Actualizar investigación nunca vuelve a aplicar estos ajustes. |
+BYMADATA da un snapshot referencial. La evaluación requiere bid/offer y cantidades positivas, evidencia coincidente de snapshot, observación con zona horaria no futura y menor o igual a 15 minutos, vencimiento vigente y spread dentro del umbral configurable. `unit_price` y la fecha del último negocio siguen desconocidos: no se fabrican con `tradeHour` ni con la hora de consulta. La observación no es un precio ejecutable y no completa los controles estrictos de una orden.
+
+La ficha de producto debe acreditar tipo, mercado, moneda e identidad. CEDEAR debe ser representación ordinaria para entrar como renta variable. Para CD se acepta una cota de una unidad nominal según BYMA 17710, manteniendo `indicative_minimum` como inferencia; no se marca `lot_size=1` como un dato del quote. Acciones locales requieren una unidad mínima respaldada antes de juzgar su asequibilidad. Esta política no equipara ETF, cripto, commodities ni cuotapartes con acciones.
+
+## Ranking y límites
+
+Primero se aplican exclusiones y suficiencia de hechos; el ranking solo compara candidatos elegibles. Los topes y compatibilidad de perfil se aplican como reglas explícitas; las fuentes consultadas no aportan un puntaje comparable de riesgo total, así que `risk_fit` permanece desconocido y no desempata. Plazos, diversificación cuando se acredita, gastos publicados del FCI, spread del snapshot y presencia medida se comparan solo cuando la misma métrica está disponible para ambos candidatos. Los gastos de FCI no se comparan con spreads de valores; los empates entre familias con métricas no comparables se resuelven por identidad canónica. Métricas como AUM y monto negociado describen presencia observada, no seguridad, familiaridad ni liquidez futura. No se puntúa rentabilidad pasada, marca, ticker, familia, orden de API ni clase A. Se seleccionan hasta dos alternativas de una categoría como opciones al mismo presupuesto, no como dos asignaciones completas.
+
+Se agrupan clases del mismo fondo/subyacente. La búsqueda examina el pool recibido antes del límite de resultados, rota las consultas entre categorías y conserva el candidato original en auditoría aunque quede fuera de la cola investigada. Los valores predeterminados son hasta 12 consultas, 24 segundos y 12 candidatos de resultado por categoría. Fallas de fuente o límites agotados dejan la información insuficiente; no activan una lista sustitutiva. El universo de búsqueda no se afirma completo.
+
+Los factores, umbrales y composición se pueden reproducir a partir de las entradas congeladas, evidencia, fuentes y fecha de evaluación. No se afirma diversificación cuando las concentraciones no se pueden medir. Se mantienen los topes de perfil y asignación configurados, sin relajar reglas para producir un ganador.
+
+## Fuentes de política
+
+- [Glosario CAFCI](https://www.cafci.org.ar/glosario.html) y [Manual de Idoneidad](https://www.argentina.gob.ar/sites/default/files/pdf_cafci.pdf): terminología de horizontes. Los umbrales concretos de este simulador son una regla provisional propia.
+- [Ficha técnica de títulos públicos](https://www.argentina.gob.ar/sites/default/files/ficha_tecnica_valuacion_titulos_publicos10052022.pdf): definición de bonos ajustables por CER.
+- [BYMA COM 17710](https://data-widgets.byma.com.ar/wp-content/uploads/2020/08/BYMA-COM-17710-Modificacion-de-unidad-minima-de-negociacion-CEDEAR.pdf): unidad nominal mínima de CEDEAR.
+- [Acceso público a BYMADATA](https://www.byma.com.ar/newsroom/byma-habilita-un-acceso-abierto-a-bymadata): contexto de demora del feed público. El evaluador conserva la hora observada de consulta, no la fecha de negocio.

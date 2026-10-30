@@ -22,18 +22,17 @@ def _research_snapshot(result, snapshot, **kwargs):
         cards = []
         if name == "Renta variable":
             cards = [{
-                "canonical_id": "ADR:YPF:NYSE", "name": "YPF S.A.", "instrument_type": "ADR",
-                "ticker": "YPF", "market": "NYSE", "category": name, "exposure": "equity",
-                "issuer": "YPF S.A.", "quotation_currency": "ARS", "subscription_currency": "ARS",
-                "economic_currency": "ARS", "costs": 0.01, "minimum": 1, "unit_price": 12,
-                "access": "available", "settlement_days": 2,
-                "description": "ADR de YPF en el mercado estadounidense.",
-                "educational_description": "Es un certificado que representa acciones de YPF en otro mercado.",
-                "reason": "Cumple los criterios de ejemplo del motor.",
-                "missing_fields": [], "familiar": True, "knowledge_version": 1,
-                "evidence": [{"source": "Fixture documentado", "url": "https://example.test/ypf",
+                "canonical_id": "CEDEAR:XYZ:BYMA", "name": "Empresa XYZ de prueba", "instrument_type": "CEDEAR",
+                "ticker": "XYZ", "market": "BYMA", "category": name, "exposure": "equity",
+                "quotation_currency": "ARS", "subscription_currency": "unknown",
+                "description": "Registro sintético para probar el render de una selección.",
+                "missing_fields": [], "knowledge_version": 1,
+                "evidence": [{"source": "Fixture sintético", "url": "https://example.test/xyz",
                               "kind": "observed", "observed_at": datetime.now(timezone.utc).isoformat(),
-                              "data_date": None, "version": "fixture-1", "fields": {"name": "YPF S.A."}}],
+                              "data_date": "2026-10-29", "version": "fixture-1",
+                              "fields": {"name": "Empresa XYZ de prueba", "category": name,
+                                         "exposure": "equity", "instrument_type": "CEDEAR", "ticker": "XYZ",
+                                         "market": "BYMA", "quotation_currency": "ARS"}}],
             }]
         selected = []
         evaluated = []
@@ -42,8 +41,12 @@ def _research_snapshot(result, snapshot, **kwargs):
         if cards:
             selected = [cards[0]]
             evaluated = [{"canonical_id": cards[0]["canonical_id"], "record": cards[0], "eligible": True,
-                          "decision": "CONSERVAR_CANDIDATO", "reason": "Cumple los criterios evaluados.",
-                          "missing_fields": [], "ranking_factors": {"riesgo": 1, "costos": 2}}]
+                          "decision": "CONSERVAR_CANDIDATO", "selection_scope": "instrument_recommendation",
+                          "reasons": ["Cotización en pesos confirmada por el fixture."], "selection_explanation": ["Cotización en pesos confirmada por el fixture."],
+                          "missing_fields": [], "execution_checks": {"status": "PENDIENTE_INTERMEDIARIO",
+                              "missing_fields": ["subscription_currency", "broker_fee"],
+                              "reasons": ["Confirmar moneda de suscripción y comisión con el intermediario."]},
+                          "ranking_factors": {"riesgo": 1, "costos": 2}}]
             category_decision = "CONSERVAR_CANDIDATO"
             comparison = {"original": evaluated[0], "alternative": evaluated[0], "reason": "Se conserva el candidato elegible."}
         categories.append({
@@ -63,7 +66,7 @@ def _research_snapshot(result, snapshot, **kwargs):
         {"canonical_id": "CRYPTO_FUND:IBIT", "name": "iShares Bitcoin Trust", "instrument_type": "CRYPTO_FUND",
          "educational_description": "Fondo con exposición a Bitcoin."},
     ]
-    research = {"schema_version": 3, "execution_id": "test-run", "policy_version": "test-policy", "universe_version": "test-universe",
+    research = {"schema_version": 4, "scope": "ARGENTINA_SIN_BROKER", "execution_id": "test-run", "policy_version": "test-policy", "universe_version": "test-universe",
                 "source_coverage": [{"source": "Catálogo FCI", "url": "https://example.test/fci",
                                      "published_at": "2026-10-29", "candidate_count": 0, "classes": ["FCI"]}],
                 "categories": categories, "educational_universe": crypto_universe,
@@ -122,12 +125,12 @@ class ResultSectionsTest(unittest.TestCase):
     def test_researched_card_is_visible_but_legacy_examples_are_not(self):
         saved = self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]
         self.assertTrue(saved["categorias"][0]["ejemplos"] or saved["categorias"][0]["alternativas"])
-        text_values = [item.value for item in [*self.app.text, *self.app.markdown] if isinstance(item.value, str)]
-        self.assertTrue(any("Selección de instrumentos" in value for value in text_values))
-        self.assertTrue(any("YPF · ADR de YPF" in value for value in text_values))
-        self.assertTrue(any("Moneda: coincide con la simulación" in value for value in text_values))
-        self.assertTrue(any("disponibilidad por intermediario sin confirmar" in value for value in text_values))
-        self.assertFalse(any("Moneda: sin confirmar" in value or "Operativa: pendiente de confirmar" in value for value in text_values))
+        text_values = self._visible_text()
+        self.assertTrue(any("Instrumentos recomendados para tu simulación" in value for value in text_values))
+        self.assertTrue(any("Empresa XYZ de prueba" in value for value in text_values))
+        self.assertTrue(any("Moneda de cotización: coincide con la simulación" in value for value in text_values))
+        self.assertTrue(any("Moneda de suscripción: se confirma con el intermediario." in value for value in text_values))
+        self.assertTrue(any("selección independiente del broker" in value for value in text_values))
         self.assertFalse(any("Fondo alfabético legacy" in value or "Alternativa legacy" in value for value in text_values))
         self.assertFalse(any("SPY educativo" in value for value in text_values))
         saved_json = json.dumps(saved, ensure_ascii=False)
@@ -146,43 +149,67 @@ class ResultSectionsTest(unittest.TestCase):
         return [item.value for kind in (self.app.text, self.app.markdown, self.app.info, self.app.warning, self.app.caption)
                 for item in kind if isinstance(item.value, str)]
 
+    @staticmethod
+    def _equity_category(research):
+        return next(item for item in research["categories"] if item.get("category") == "Renta variable")
+
     def test_educational_cards_ignored_and_old_schema_requests_update(self):
         saved = self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]
         research = saved["investigacion"]
-        research["categories"][0]["selected"] = []
-        research["categories"][0]["evaluated"] = []
+        category = self._equity_category(research)
+        category["selected"] = []
+        category["evaluated"] = []
         self._set_research(research)
         self.assertFalse(any("SPY educativo" in value for value in self._visible_text()))
-        research["schema_version"] = 2
+        research["schema_version"] = 3
         self._set_research(research)
         text_values = self._visible_text()
-        self.assertTrue(any("referencias informativas" in value and "Actualizá" in value for value in text_values))
-        self.assertFalse(any("SPY educativo" in value or "YPF · ADR de YPF" in value for value in text_values))
+        self.assertTrue(any("alcance anterior" in value and "Actualizá" in value for value in text_values))
+        self.assertFalse(any("SPY educativo" in value or "Empresa XYZ de prueba" in value for value in text_values))
 
     def test_unknown_but_eligible_selected_candidate_is_rendered(self):
         research = self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]["investigacion"]
-        candidate = {"canonical_id": "ETF:XYZ:XNAS", "name": "Fondo XYZ", "instrument_type": "ETF",
-                     "market": "XNAS", "educational_description": "Descripción general."}
-        research["categories"][0]["selected"] = [candidate]
-        research["categories"][0]["evaluated"] = [{"canonical_id": "ETF:XYZ:XNAS", "record": candidate,
+        candidate = {"canonical_id": "ETF:XYZ:XNAS", "name": "Fondo XYZ", "instrument_type": "CEDEAR",
+                     "market": "XNAS", "educational_description": "Descripción general.", "quotation_currency": "ARS"}
+        category = self._equity_category(research)
+        category["selected"] = [candidate]
+        category["evaluated"] = [{"canonical_id": "ETF:XYZ:XNAS", "record": candidate,
                                                         "eligible": True, "decision": "CONSERVAR_CANDIDATO",
-                                                        "missing_fields": []}]
-        research["categories"][0]["decision"] = "CONSERVAR_CANDIDATO"
+                                                        "selection_scope": "instrument_recommendation", "missing_fields": []}]
+        category["decision"] = "CONSERVAR_CANDIDATO"
         self._set_research(research)
         self.assertTrue(any("Fondo XYZ" in value for value in self._visible_text()))
 
     def test_malformed_selected_candidate_is_not_rendered(self):
         research = self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]["investigacion"]
-        candidate = {"canonical_id": "ETF:BAD:XNAS", "name": "Candidato inválido", "instrument_type": "ETF"}
-        research["categories"][0]["selected"] = [candidate]
-        research["categories"][0]["evaluated"] = [{"canonical_id": "ETF:BAD:XNAS", "record": candidate,
+        candidate = {"canonical_id": "ETF:BAD:XNAS", "name": "Candidato inválido", "instrument_type": "CEDEAR"}
+        category = self._equity_category(research)
+        category["selected"] = [candidate]
+        category["evaluated"] = [{"canonical_id": "ETF:BAD:XNAS", "record": candidate,
                                                         "eligible": True, "decision": "SELECCIONADO",
-                                                        "missing_fields": []}]
-        research["categories"][0]["decision"] = "CONSERVAR_CANDIDATO"
+                                                        "selection_scope": "instrument_recommendation", "missing_fields": []}]
+        category["decision"] = "CONSERVAR_CANDIDATO"
         self._set_research(research)
         text_values = self._visible_text()
         self.assertFalse(any("Candidato inválido" in value for value in text_values))
         self.assertTrue(any("no coincide con una evaluación elegible" in value for value in text_values))
+
+    def test_old_v3_scope_requests_update(self):
+        research = self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]["investigacion"]
+        research["schema_version"] = 3
+        self._set_research(research)
+        self.assertTrue(any("alcance anterior" in value and "Actualizá" in value for value in self._visible_text()))
+
+    def test_broker_checks_do_not_block_recommendation_but_required_facts_do(self):
+        research = self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]["investigacion"]
+        self.assertTrue(any("Empresa XYZ de prueba" in value for value in self._visible_text()))
+        category = self._equity_category(research)
+        candidate = category["selected"][0]
+        evaluation = category["evaluated"][0]
+        evaluation["missing_fields"] = ["quotation_currency"]
+        self._set_research(research)
+        self.assertFalse(any("Empresa XYZ de prueba" in item.value for item in self.app.markdown if isinstance(item.value, str)))
+        self.assertTrue(any("Sin selección" in item.label for item in self.app.expander))
 
     def test_tab_navigation_does_not_repeat_research_query(self):
         self.app.button(key="nav_auditoria").click().run()

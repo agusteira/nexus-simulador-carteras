@@ -1,8 +1,8 @@
 import json
 import unittest
-from datetime import date
+from datetime import date, datetime, timezone
 
-from nexus.cafci import CAFCIClient, CAFCIReferenceProvider, CATALOG_URL, _cache
+from nexus.cafci import CAFCIClient, CAFCIReferenceProvider, CATALOG_URL, _cache, _normalize
 from nexus.instrument_rules import evaluate_candidate
 from nexus.market_data import MarketDataError
 
@@ -14,10 +14,13 @@ CATALOG_FIXTURE = {
     "fondos": [
         {"id": 11, "nombre": "Fondo variable", "estado": 1, "objetivo": "Invertir en acciones",
          "dias_liquidacion": 2, "moneda": {"id": 1, "nombre": "Peso Argentina"},
+         "mm_puro": False, "mm_indice": False, "tipo_renta_mixta": None, "codigo_cnv": 881,
          "tipo_renta": {"id": 2, "nombre": "Renta Variable"}, "horizonte": {"id": 1, "nombre": "Corto Plazo"},
          "duration": {"id": 1, "nombre": "No Registrada"}, "benchmark": {"id": 0, "nombre": "No Registrado"},
          "clases": [{"id": 101, "nombre": "Fondo variable - Clase A", "moneda": {"id": 1, "nombre": "Peso Argentina"},
-                     "inversion_minima": 1000, "honorarios": {"administracion_gerente": "0.5", "ingreso": "0.0"},
+                     "inversion_minima": 1000, "rg384": False, "codigo_cnv": 101,
+                     "honorarios": {"administracion_gerente": "0.5", "administracion_depositaria": "0.25",
+                                    "gasto_ordinario_gestion": "0.1", "ingreso": "0.0", "rescate": None},
                      "suscripcion": True, "liquidez": True, "log_abierto": True},
                     {"id": 102, "nombre": "Fondo variable - Clase B", "moneda": {"id": 2, "nombre": "Dolar Estadounidense"},
                      "inversion_minima": None, "honorarios": None, "suscripcion": True, "liquidez": True, "log_abierto": True},
@@ -92,11 +95,11 @@ class CAFCTest(unittest.TestCase):
         _cache.clear()
 
     def _client(self, mapping, timeout=8, clock=lambda: 100):
-        return CAFCIClient(timeout=timeout, opener=FakeOpener(mapping), clock=clock)
+        return CAFCIClient(timeout=timeout, opener=FakeOpener(mapping), clock=clock, daily_client=False)
 
     def test_catalog_normalizes_only_active_open_classes_and_keeps_unknowns(self):
         opener = FakeOpener({CATALOG_URL: json.dumps(CATALOG_FIXTURE).encode()})
-        result = CAFCIClient(opener=opener, clock=lambda: 1).fund_catalog(today=date(2026, 10, 30))
+        result = CAFCIClient(opener=opener, clock=lambda: 1, daily_client=False).fund_catalog(today=date(2026, 10, 30))
         records = result["normalized_records"]
         self.assertEqual(result["fuente"], "CAFCI")
         self.assertEqual(result["fondos"], [])
@@ -114,6 +117,15 @@ class CAFCTest(unittest.TestCase):
         self.assertEqual(var_a["exposure"], "equity")
         self.assertEqual(var_a["minimum"], 1000.0)
         self.assertEqual(var_a["raw_fees"]["administracion_gerente"], "0.5")
+        self.assertEqual(var_a["fund_fee_annual_pct"], 0.85)
+        self.assertEqual(var_a["fund_fee_components_annual_pct"]["gasto_ordinario_gestion"], 0.1)
+        self.assertEqual(var_a["entry_fee_pct"], 0)
+        self.assertIsNone(var_a["redemption_fee_pct"])
+        self.assertTrue(var_a["fund_open"])
+        self.assertTrue(var_a["subscription_open"])
+        self.assertTrue(var_a["redemption_open"])
+        self.assertFalse(var_a["mm_pure"])
+        self.assertEqual(var_a["raw_metadata"]["codigo_cnv"], 101)
         self.assertIsNone(var_a["costs"])
         self.assertIsNone(var_b["minimum"])
         self.assertEqual(var_b["quotation_currency"], "USD")
@@ -144,6 +156,8 @@ class CAFCTest(unittest.TestCase):
         self.assertEqual(mm["liquidity"], "unknown")
         self.assertEqual(mm["settlement_days"], 0)
         self.assertEqual(mm["minimum"], 0.0)
+        self.assertIsNone(mm["fund_fee_annual_pct"])
+        self.assertIsNone(mm["costs"])
 
     def test_mandate_hints_are_not_inferred_from_fund_or_class_name(self):
         result = self._client({CATALOG_URL: json.dumps(CATALOG_FIXTURE).encode()}).fund_catalog(today=date(2026, 10, 30))
@@ -160,6 +174,20 @@ class CAFCTest(unittest.TestCase):
         unknown = next(r for r in result["normalized_records"] if r["cafci_fund_id"] == 11)
         self.assertIsNone(unknown["category_hint"])
 
+    def test_mandate_can_have_both_hints_and_currency_label_keeps_mep_or_cable(self):
+        fund = {"id": 99, "nombre": "Nombre comercial irrelevante", "estado": 1,
+                "objetivo": "Administrar bonos CER y cobertura dólar-linked", "tipo_renta": {"nombre": "Renta Fija"},
+                "moneda": {"nombre": "Dolar Estadounidense Cable"}, "horizonte": {"nombre": "Mediano Plazo"}}
+        klass = {"id": 990, "nombre": "Clase A", "log_abierto": True,
+                 "moneda": {"nombre": "Dolar Estadounidense Cable"}, "honorarios": {}}
+        record = _normalize(fund, klass, datetime(2026, 10, 29, tzinfo=timezone.utc),
+                            "2026-10-30T00:00:00+00:00", CATALOG_URL)
+        self.assertIsNone(record["category"])
+        self.assertEqual(record["category_hints"], ["Renta fija inflación", "Renta fija cambiaria"])
+        self.assertEqual(record["exposure_basis"], "mandate")
+        self.assertEqual(record["fund_currency_label"], "Dolar Estadounidense Cable")
+        self.assertIsNone(record["quotation_currency"])
+
     def test_catalog_rejects_future_and_stale_publication_dates(self):
         for stamp in ("2026-10-31T00:00:00Z", "2026-10-20T00:00:00Z"):
             payload = dict(CATALOG_FIXTURE, generated_at=stamp)
@@ -175,7 +203,7 @@ class CAFCTest(unittest.TestCase):
 
     def test_catalog_cache_and_timeout_forwarding(self):
         opener = FakeOpener({CATALOG_URL: json.dumps(CATALOG_FIXTURE).encode()})
-        client = CAFCIClient(timeout=3, opener=opener, clock=lambda: 10)
+        client = CAFCIClient(timeout=3, opener=opener, clock=lambda: 10, daily_client=False)
         first = client.fund_catalog(today=date(2026, 10, 30))
         second = client.fund_catalog(today=date(2026, 10, 30))
         self.assertFalse(first["cache"])
@@ -198,7 +226,7 @@ class CAFCTest(unittest.TestCase):
         self.assertEqual(result["holding_labels"][0], "Bono Boncer TZXS7")
         self.assertEqual(result["holdings"], [])
         self.assertEqual(result["exposure_basis"], "mandate")
-        self.assertEqual(result["evidence"][-1]["expires_at"], "2026-10-16T23:59:59+00:00")
+        self.assertEqual(result["evidence"][-1]["expires_at"], "2026-11-13T23:59:59+00:00")
         self.assertEqual(opener.calls[0][1], 4)
 
     def test_missing_or_future_composition_date_is_not_promoted_as_current(self):
@@ -212,7 +240,11 @@ class CAFCTest(unittest.TestCase):
         future = DETAIL_FIXTURE.replace(b"09/10/2026", b"31/10/2026")
         future_provider = CAFCIReferenceProvider(opener=FakeOpener({url: future}))
         with self.assertRaises(MarketDataError):
-            future_provider.research(record, today=date(2026, 10, 30))
+            future_provider.research(record, today=date(2026, 10, 30), refresh=True)
+        stale = DETAIL_FIXTURE.replace(b"09/10/2026", b"01/09/2026")
+        stale_provider = CAFCIReferenceProvider(opener=FakeOpener({url: stale}))
+        with self.assertRaises(MarketDataError):
+            stale_provider.research(record, today=date(2026, 10, 30), refresh=True)
 
     def test_reference_rejects_unrecognized_ids_redirect_and_timeout(self):
         provider = CAFCIReferenceProvider(opener=FakeOpener({}))

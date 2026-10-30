@@ -14,8 +14,9 @@ from .common import fecha_fmt, moneda_fmt
 
 
 def render(result, snapshot):
-    st.markdown("## Selección de instrumentos")
-    st.write("Comparamos candidatos con las reglas de esta simulación. Cada selección conserva sus fuentes y los motivos de la decisión.")
+    st.markdown("## Instrumentos recomendados para tu simulación")
+    st.write("Mercado argentino · selección independiente del broker.")
+    st.caption("La selección compara datos públicos. Antes de operar, confirmá las condiciones y costos de tu intermediario.")
 
     saved = result.get("ejemplos_instrumentos")
     if saved is None and not is_result_stale():
@@ -36,8 +37,8 @@ def render(result, snapshot):
         _render_legacy_source_diagnostics(saved)
         return
 
-    if research.get("schema_version") != 3:
-        st.info("Esta consulta anterior mostraba referencias informativas. Actualizá la investigación para obtener la decisión del motor.")
+    if research.get("schema_version") != 4 or research.get("scope") != "ARGENTINA_SIN_BROKER":
+        st.info("Esta consulta usa un alcance anterior. Actualizá la investigación para obtener la selección del mercado argentino sin broker.")
         _render_sources_and_limits(saved, research)
         return
 
@@ -65,17 +66,15 @@ def render(result, snapshot):
             if malformed:
                 st.warning("La investigación contiene una selección que no coincide con una evaluación elegible. No se muestra esa ficha.")
             if selected:
-                comparison = category_research.get("comparison") or {}
-                if comparison.get("reason"):
-                    st.info(str(comparison["reason"]))
                 for index, candidate in enumerate(selected[:2]):
                     record = candidate.get("record", {})
-                    if candidate.get("reason"):
-                        st.text(str(candidate["reason"]))
-                    elif candidate.get("reasons"):
-                        st.text(_join_reasons(candidate["reasons"]))
+                    if len(selected) > 1:
+                        st.caption("Opción principal" if index == 0 else "Alternativa evaluada; no se suma como una segunda posición")
                     _render_card(record, currency, research, category, index, candidate)
                 _render_comparison(category_research)
+                category_explanation = category_research.get("selection_explanation") or []
+                if category_explanation:
+                    st.text(_join_reasons(category_explanation) if isinstance(category_explanation, list) else str(category_explanation))
             else:
                 _render_no_selection(category_research)
 
@@ -108,7 +107,8 @@ def _validated_selected(category_research):
         decision = next((item for item in evaluated if item.get("canonical_id") == canonical_id), None)
         if (not canonical_id or not decision or decision.get("eligible") is not True
                 or decision.get("decision") != "CONSERVAR_CANDIDATO"
-                or decision.get("missing_fields") or not isinstance(decision.get("record"), dict)):
+                or decision.get("missing_fields") or decision.get("selection_scope") != "instrument_recommendation"
+                or not isinstance(decision.get("record"), dict)):
             malformed = True
             continue
         valid.append(decision)
@@ -119,32 +119,87 @@ def _render_card(card, currency, research, category, index, evaluation):
     with st.container(border=True):
         name = card.get("name") or card.get("canonical_id") or "Instrumento sin nombre"
         st.markdown(f"<h3>{escape(_display_name(card))}</h3>", unsafe_allow_html=True)
+        explanation = evaluation.get("selection_explanation") or evaluation.get("reasons") or evaluation.get("reason")
+        if explanation:
+            st.write(_join_reasons(explanation) if isinstance(explanation, list) else str(explanation))
         st.text(f"{_type_label(card.get('instrument_type'))} · {card.get('market') or 'mercado no confirmado'}")
         description = card.get("educational_description") or card.get("description") or _what_is(card)
         st.text(description)
 
         currency_status = _selected_currency_status(card, currency)
-        st.text(f"Moneda: {currency_status} · Operativa: condiciones evaluadas por el motor; disponibilidad por intermediario sin confirmar")
+        st.text(f"Moneda de cotización: {currency_status}")
+        if not card.get("subscription_currency") or card.get("subscription_currency") == "unknown":
+            st.caption("Moneda de suscripción: se confirma con el intermediario.")
+        else:
+            st.caption(f"Moneda de suscripción informada: {card['subscription_currency']}.")
 
         missing = evaluation.get("missing_fields", []) or []
-        if missing or evaluation.get("reason") or evaluation.get("reasons"):
-            with st.expander("Qué se verificó y qué falta antes de operar", expanded=False):
-                if evaluation.get("reason"):
-                    st.text(evaluation["reason"])
-                elif evaluation.get("reasons"):
-                    st.text(_join_reasons(evaluation["reasons"]))
+        if card.get("minimum") is not None:
+            st.text(f"Mínimo publicado antes de comisiones: {moneda_fmt(card['minimum'], card.get('quotation_currency') or currency)} {card.get('quotation_currency') or currency}.")
+        if card.get("reference_offer_price") is not None and card.get("snapshot_observed_at"):
+            st.text(f"Oferta vendedora referencial observada: {moneda_fmt(card['reference_offer_price'], currency)} {currency}.")
+            st.caption(f"Consulta al portal: {fecha_fmt(card['snapshot_observed_at'])}. La fuente anuncia datos con {card.get('snapshot_delay_minutes', 20)} minutos de demora y no informa la fecha del último negocio. El precio final se confirma antes de operar.")
+        if card.get("unit_price") is not None and (card.get("price_date") or card.get("quote_date")):
+            st.text(f"Precio referencial: {card['unit_price']} {card.get('quotation_currency') or currency} · fecha {card.get('price_date') or card.get('quote_date')}.")
+            quote_evidence = _field_evidence(card, "unit_price")
+            quote_source = card.get("price_source") or card.get("quote_source") or (quote_evidence or {}).get("source")
+            quote_url = _https_url(card.get("price_url") or card.get("quote_url") or (quote_evidence or {}).get("url"))
+            if quote_url:
+                st.link_button(f"Fuente de cotización: {urlparse(quote_url).netloc}", quote_url)
+            elif quote_source:
+                st.caption(f"Fuente de cotización: {quote_source}.")
+            delay = (card.get("price_delay_minutes") or card.get("quote_delay_minutes")
+                     or (quote_evidence or {}).get("delay_minutes"))
+            if delay is not None:
+                st.caption(f"La fuente informa un retraso de {delay} minutos; el precio no es en tiempo real.")
+            else:
+                st.caption("Precio referencial publicado; puede no reflejar el valor actual.")
+        if card.get("lot_size") is not None and _has_field_evidence(card, "lot_size"):
+            st.text(f"Lote publicado: {card['lot_size']}.")
+        if card.get("fund_fee_annual_pct") is not None:
+            st.text(f"Gastos anuales publicados que se pudieron comparar: {_number_fmt(card['fund_fee_annual_pct'])}% anual.")
+        if card.get("settlement_days") is not None:
+            st.text(f"Plazo de liquidación publicado: {_number_fmt(card['settlement_days'])} días hábiles.")
+        metric = card.get("market_metric")
+        if not isinstance(metric, dict) and card.get("volume") is not None:
+            metric = {"name": "Volumen informado", "value": card.get("volume"),
+                      "unit": card.get("volume_unit"), "date": card.get("volume_date")}
+        if isinstance(metric, dict) and metric.get("value") is not None:
+            metric_name = metric.get("name") or metric.get("label") or {"patrimonio_clase": "Patrimonio reportado de la clase", "monto_negociado_observado": "Monto negociado observado en el portal"}.get(metric.get("metric"), "Métrica de mercado")
+            metric_unit = metric.get("unit") or metric.get("currency") or ""
+            metric_date = metric.get("date") or metric.get("period") or metric.get("observed_at")
+            metric_value = moneda_fmt(metric["value"], currency) if isinstance(metric["value"], (int, float)) and not isinstance(metric["value"], bool) else str(metric["value"])
+            st.text(f"{metric_name}: {metric_value} {metric_unit}".strip() + (f" · referencia {metric_date}." if metric_date else "."))
+        derived = card.get("derived_exposure")
+        if isinstance(derived, dict):
+            exposure_names = {"inflation": "instrumentos con ajuste por inflación", "fx": "instrumentos vinculados al tipo de cambio"}
+            st.text("Exposición identificada en la composición: " + ", ".join(f"{_number_fmt(value)}% en {exposure_names.get(key, key)}" for key, value in derived.items()) + ".")
+            if card.get("derived_exposure_date"):
+                st.caption(f"Composición publicada al {card['derived_exposure_date']}; las tenencias pueden haber cambiado.")
+            if card.get("derived_exposure_reasons"):
+                st.caption(_join_reasons(card["derived_exposure_reasons"]))
+        holdings = card.get("holdings_details") or []
+        if holdings and card.get("holdings_date") and _has_field_evidence(card, "holdings_details"):
+            st.text("Principales posiciones informadas: " + "; ".join(
+                f"{item.get('name')}: {_number_fmt(item.get('weight'))}%" for item in holdings[:4] if isinstance(item, dict)))
+            if card.get("holdings_date"):
+                st.caption(f"Fecha de composición informada: {card['holdings_date']}; las tenencias pueden haber cambiado.")
+
+        execution_checks = evaluation.get("execution_checks") or {}
+        with st.expander("Qué confirmar con tu intermediario", expanded=False):
+            st.caption("La selección no confirma que tu intermediario ofrezca el instrumento ni que una orden pueda ejecutarse.")
+            broker_missing = execution_checks.get("missing_fields") or []
+            if broker_missing:
+                st.text("Por confirmar: " + ", ".join(_field_label(field) for field in broker_missing) + ".")
+            if execution_checks.get("reasons"):
+                st.text(_join_reasons(execution_checks["reasons"]))
+            if not broker_missing and not execution_checks.get("reasons"):
+                st.text("Confirmá disponibilidad, condiciones y costos con tu intermediario.")
+        if evaluation.get("reasons"):
+            with st.expander("Reglas y motivos de la selección", expanded=False):
+                st.text(_join_reasons(evaluation["reasons"]))
                 if missing:
-                    st.text("Por confirmar: " + ", ".join(_field_label(field) for field in missing) + ".")
-                if card.get("minimum") is not None:
-                    st.text(f"Mínimo publicado: {card['minimum']} {card.get('currency') or currency}.")
-                if card.get("settlement_days") is not None:
-                    st.text(f"Plazo de liquidación informado: {card['settlement_days']} días.")
-                holdings = card.get("holdings_details") or []
-                if holdings:
-                    st.text("Composición informada (no necesariamente vigente): " + "; ".join(
-                        f"{item.get('name')}: {item.get('weight')}%" for item in holdings if isinstance(item, dict)))
-                    if card.get("holdings_date"):
-                        st.caption(f"Fecha de composición informada: {card['holdings_date']}.")
+                    st.text("Datos bloqueantes de la recomendación: " + ", ".join(_field_label(field) for field in missing) + ".")
         if card.get("risks"):
             st.text("Riesgos: " + "; ".join(str(x) for x in card["risks"][:3]))
 
@@ -171,13 +226,19 @@ def _render_card(card, currency, research, category, index, evaluation):
                 st.warning("No se pudo guardar la señal local.")
 
 
+def _number_fmt(value):
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return f"{value:.2f}".rstrip("0").rstrip(".").replace(".", ",")
+    return str(value)
+
+
 def _render_no_selection(category_research):
     evaluated = category_research.get("evaluated") or []
     eligible_count = sum(item.get("eligible") is True for item in evaluated)
     excluded_count = sum(str(item.get("decision", "")).upper() == "EXCLUIR_CANDIDATO" for item in evaluated)
     pending = [item for item in evaluated if item.get("eligible") is not True
                and str(item.get("decision", "")).upper() != "EXCLUIR_CANDIDATO"]
-    st.warning("El motor no seleccionó un instrumento para esta categoría. Esta simulación no emite una recomendación cuando faltan datos o hace falta revisión.")
+    st.warning("No hay un instrumento seleccionado para esta categoría con la evidencia disponible.")
     st.caption(f"Analizados: {len(evaluated)} · elegibles: {eligible_count} · excluidos: {excluded_count} · pendientes de revisión: {len(pending)}.")
     missing = []
     reasons = []
@@ -226,6 +287,14 @@ def _render_comparison(category_research):
             factors = candidate.get("ranking_factors") or {}
             if factors:
                 st.text("Factores: " + ", ".join(f"{_factor_label(key)} {value}" for key, value in factors.items()) + ".")
+            for evidence in record.get("evidence", [])[:2]:
+                if not isinstance(evidence, dict):
+                    continue
+                st.caption(f"Evidencia: {evidence.get('source') or 'fuente informada'} · "
+                           f"{evidence.get('data_date') or evidence.get('observed_at') or 'fecha no informada'}.")
+                url = _https_url(evidence.get("url"))
+                if url:
+                    st.link_button("Consultar evidencia de comparación", url)
         if comparison.get("reason"):
             st.caption(str(comparison["reason"]))
 
@@ -258,11 +327,8 @@ def _render_sources_and_limits(saved, research):
                 st.link_button("Ver publicación del catálogo", url)
         seen = set()
         for category in research.get("categories", []):
-            for candidate in category.get("selected", []):
-                evaluated = next((item for item in category.get("evaluated", [])
-                                  if item.get("canonical_id") == candidate.get("canonical_id") and item.get("eligible") is True), None)
-                if not evaluated:
-                    continue
+            selected, _ = _validated_selected(category)
+            for evaluated in selected:
                 record = evaluated.get("record") or {}
                 for evidence in record.get("evidence", []):
                     url = _https_url(evidence.get("url"))
@@ -351,12 +417,20 @@ def _what_is(record):
 
 def _selected_currency_status(card, currency):
     quotation = card.get("quotation_currency")
-    subscription = card.get("subscription_currency")
-    if quotation == currency and subscription == currency:
+    if quotation == currency:
         return "coincide con la simulación"
-    if not quotation or not subscription:
-        return "sin confirmar (cotización o suscripción no informada)"
-    return f"sin confirmar ({quotation} / {subscription})"
+    if not quotation or quotation == "unknown":
+        return "sin confirmar (cotización no informada)"
+    return f"no coincide con la moneda simulada ({quotation} / {currency})"
+
+
+def _has_field_evidence(record, field):
+    return _field_evidence(record, field) is not None
+
+
+def _field_evidence(record, field):
+    return next((item for item in record.get("evidence", [])
+                 if isinstance(item, dict) and field in (item.get("fields") or {})), None)
 
 
 def _join_reasons(reasons):
@@ -367,10 +441,23 @@ def _field_label(value):
     labels = {"quotation_currency": "moneda de cotización", "subscription_currency": "moneda de suscripción",
               "economic_currency": "moneda de exposición económica", "minimum": "inversión mínima",
               "lot_size": "lote", "unit_price": "precio unitario", "costs": "costos y comisiones",
+              "broker_fee": "comisión del intermediario",
               "settlement_days": "plazo de liquidación", "liquidity": "liquidez", "access": "acceso",
               "holdings": "composición de la cartera", "category_or_exposure": "categoría o exposición",
               "availability": "disponibilidad operativa", "access_authorization": "habilitación del acceso",
-              "actual_exposure_or_holdings": "composición y exposición actuales"}
+              "actual_exposure_or_holdings": "composición y exposición actuales",
+              "broker": "intermediario", "broker_fees": "comisiones y gastos del intermediario",
+              "cash_subscription_route": "canal y moneda de fondeo", "account_authorization": "habilitación de la cuenta",
+              "final_execution_price": "precio final de la orden", "order_quantity": "cantidad operable",
+              "broker_settlement_confirmation": "plazos y horarios de acreditación",
+              "broker_subscription_currency": "moneda aceptada al suscribir", "broker_redemption_channel": "canal y horarios de rescate",
+              "fund_open": "fondo abierto", "subscription_open": "suscripción de la clase habilitada",
+              "redemption_open": "rescate de la clase habilitado", "qualified_only": "restricción para inversores calificados",
+              "horizon": "horizonte publicado", "duration": "duración publicada de los activos",
+              "category": "clasificación", "exposure": "exposición", "holdings_date": "fecha de composición",
+              "holdings_details": "composición publicada", "documented_market_unit_rule": "unidad mínima de negociación respaldada",
+              "ordinary_share_representation": "representación de una acción ordinaria",
+              "valid_two_sided_market_snapshot": "ofertas de compra y venta verificables"}
     if value.endswith("_evidence"):
         return _field_label(value.removesuffix("_evidence")) + " y su evidencia"
     return labels.get(value, value.replace("_", " "))

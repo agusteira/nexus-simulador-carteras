@@ -1,5 +1,5 @@
 {
-  "proposito": "Casos ficticios con matriz v1 y política educativa educational-3; revisión experta pendiente.",
+  "proposito": "Casos ficticios con matriz v1 y política educativa argentina-4; revisión experta pendiente.",
   "aprobacion_experta": {
     "estado": "pendiente",
     "revisor": null,
@@ -58,7 +58,7 @@
             }
           ],
           "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado.",
-          "version_politica_instrumentos": "educational-3",
+          "version_politica_instrumentos": "argentina-4",
           "revision_experta": "pendiente"
         },
         "auditoria": [
@@ -128,7 +128,7 @@
             }
           ],
           "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado.",
-          "version_politica_instrumentos": "educational-3",
+          "version_politica_instrumentos": "argentina-4",
           "revision_experta": "pendiente"
         },
         "auditoria": [
@@ -205,7 +205,7 @@
             }
           ],
           "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado.",
-          "version_politica_instrumentos": "educational-3",
+          "version_politica_instrumentos": "argentina-4",
           "revision_experta": "pendiente"
         },
         "auditoria": [
@@ -289,7 +289,7 @@
             }
           ],
           "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado.",
-          "version_politica_instrumentos": "educational-3",
+          "version_politica_instrumentos": "argentina-4",
           "revision_experta": "pendiente"
         },
         "auditoria": [
@@ -380,7 +380,7 @@
             }
           ],
           "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado.",
-          "version_politica_instrumentos": "educational-3",
+          "version_politica_instrumentos": "argentina-4",
           "revision_experta": "pendiente"
         },
         "auditoria": [
@@ -478,7 +478,7 @@
             }
           ],
           "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado.",
-          "version_politica_instrumentos": "educational-3",
+          "version_politica_instrumentos": "argentina-4",
           "revision_experta": "pendiente"
         },
         "auditoria": [
@@ -562,7 +562,7 @@
             }
           ],
           "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado.",
-          "version_politica_instrumentos": "educational-3",
+          "version_politica_instrumentos": "argentina-4",
           "revision_experta": "pendiente"
         },
         "auditoria": [
@@ -646,7 +646,7 @@
             }
           ],
           "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado.",
-          "version_politica_instrumentos": "educational-3",
+          "version_politica_instrumentos": "argentina-4",
           "revision_experta": "pendiente"
         },
         "auditoria": [
@@ -704,7 +704,7 @@
               "mensaje": "Tolerancia nula a pérdidas y objetivo de crecimiento requieren revisión manual."
             }
           ],
-          "version_politica_instrumentos": "educational-3",
+          "version_politica_instrumentos": "argentina-4",
           "revision_experta": "pendiente"
         },
         "auditoria": [],
@@ -742,7 +742,7 @@
               "mensaje": "Confirmá que los datos del escenario sean vigentes antes de ejecutar."
             }
           ],
-          "version_politica_instrumentos": "educational-3",
+          "version_politica_instrumentos": "argentina-4",
           "revision_experta": "pendiente"
         },
         "auditoria": [],
@@ -755,5 +755,5 @@
       }
     }
   ],
-  "politica_instrumentos": "educational-3"
+  "politica_instrumentos": "argentina-4"
 }

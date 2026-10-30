@@ -1,6 +1,6 @@
 # Validación del recorrido y del brief
 
-Los datos de estos casos son ficticios. Las salidas de referencia usan la matriz v1 y la política provisional `educational-3`. La coincidencia técnica no certifica idoneidad financiera ni cumplimiento regulatorio. Horizonte y objetivo pueden limitar renta variable y trasladar el excedente a liquidez; las reglas y sus umbrales requieren revisión experta. Las referencias educativas respetan esos mismos topes: no se aplica una prohibición total de renta variable a una categoría que tiene asignación positiva dentro del límite.
+Los datos de estos casos son ficticios. Las salidas de referencia usan la matriz v1 y la política provisional `argentina-4`. La coincidencia técnica no certifica idoneidad financiera ni cumplimiento regulatorio. Horizonte y objetivo pueden limitar renta variable y trasladar el excedente a liquidez; las reglas y sus umbrales requieren revisión experta. Las referencias educativas respetan esos mismos topes: no se aplica una prohibición total de renta variable a una categoría que tiene asignación positiva dentro del límite.
 
 ## Diez casos para revisión del docente o asesor
 

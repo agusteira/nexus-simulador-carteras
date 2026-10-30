@@ -30,6 +30,11 @@ class UserFlowTest(unittest.TestCase):
             "consultado_en": today + "T00:00:00+00:00", "fecha_publicacion": today + "T00:00:00+00:00"})
         self.source_mock = self.public_source.start()
         self.addCleanup(self.public_source.stop)
+        market = patch("nexus.byma_public.BYMAPublicClient.instrument_catalog", return_value={
+            "normalized_records": [], "fondos": [], "fuente": "Mercado offline de prueba",
+            "url": "https://example.test/market", "source_errors": []})
+        self.market_mock = market.start()
+        self.addCleanup(market.stop)
         # All provider calls stay offline, including reference research added in issue #1.
         references = patch("nexus.instrument_research.ReferenceProvider.research", side_effect=lambda record, **kwargs: record)
         references.start()
@@ -84,20 +89,18 @@ class UserFlowTest(unittest.TestCase):
         self.assertEqual(self.app.session_state["perfil_capital"], 300000.0)
         self.assertEqual(self.app.session_state["datos_inversor"]["capital"], 250000.0)
 
-    def test_market_access_is_explicit_and_frozen_with_the_evaluation(self):
+    def test_argentina_scope_needs_no_broker_declaration_and_remains_frozen(self):
         self.fill_profile()
         self.assertEqual(self.app.session_state["datos_inversor"]["acceso"], [])
-        self.navigate("perfil")
-        self.app.multiselect(key="perfil_acceso").set_value(["local"]).run()
-        self.click("Guardar perfil y continuar")
         self.evaluate()
-        original = self.app.session_state["snapshot_ejecucion"]
-        self.assertEqual(original["perfil"]["acceso"], ["local"])
+        original = self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]
+        self.assertEqual(original["investigacion"]["scope"], "ARGENTINA_SIN_BROKER")
         self.navigate("perfil")
-        self.app.multiselect(key="perfil_acceso").set_value(["local", "international"]).run()
+        self.set_capital(300000.0)
         self.navigate("resultado")
-        self.assertEqual(self.app.session_state["snapshot_ejecucion"]["perfil"]["acceso"], ["local"])
+        self.assertEqual(self.app.session_state["resultado_robo"]["ejemplos_instrumentos"], original)
         self.assertEqual(self.source_mock.call_count, 1)
+        self.assertEqual(self.market_mock.call_count, 1)
 
     def test_missing_capital_is_validated_on_submit(self):
         self.navigate("perfil")
@@ -239,18 +242,18 @@ class UserFlowTest(unittest.TestCase):
         self.source_mock.side_effect = [MarketDataError("Fixture offline: sin conexión"), good]
         self.fill_profile()
         self.evaluate()
-        self.assertTrue(any("El motor no seleccionó" in item.value for item in self.app.warning))
+        self.assertTrue(any("No hay un instrumento seleccionado" in item.value for item in self.app.warning))
         # Reference research remains inspectable when the FCI catalog fails;
         # source-specific examples must not claim that funds were retrieved.
         saved = self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]
-        self.assertFalse(saved["fuentes"])
+        self.assertFalse(any(source.get("fuente") == "Fixture offline de tests" for source in saved["fuentes"]))
         self.assertTrue(saved["investigacion"]["educational_universe"])
         self.assertTrue(all(not c["ejemplos"] and not c["alternativas"] for c in saved["categorias"]))
         self.assertTrue(all(not c["selected"] for c in saved["investigacion"]["categories"]))
         self.assertEqual(len([b for b in self.app.button if "Actualizar investigación" in b.label]), 1)
         self.click("Actualizar investigación")
         self.assertEqual(self.source_mock.call_count, 2)
-        self.assertTrue(any("El motor no seleccionó" in item.value for item in self.app.warning))
+        self.assertTrue(any("No hay un instrumento seleccionado" in item.value for item in self.app.warning))
         self.assertTrue(self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]["fuentes"])
 
     def test_legacy_fci_alternatives_are_not_rendered_as_investigated_cards(self):
@@ -264,7 +267,7 @@ class UserFlowTest(unittest.TestCase):
         self.fill_profile()
         self.evaluate()
         visible = " ".join(item.value for item in [*self.app.markdown, *self.app.text] if isinstance(item.value, str))
-        self.assertIn("Selección de instrumentos", visible)
+        self.assertIn("Instrumentos recomendados para tu simulación", visible)
         # The rejected candidate remains inspectable in the closed audit detail,
         # but must never appear as an instrument card or a selected record.
         self.assertFalse(any("<h3>Renta fija alternativa" in item.value for item in self.app.markdown))
@@ -306,7 +309,7 @@ class UserFlowTest(unittest.TestCase):
         self.navigate("auditoria")
         self.navigate("resultado")
         self.assertEqual(self.source_mock.call_count, 1)
-        self.assertTrue(any("consulta anterior mostraba referencias informativas" in item.value for item in self.app.info))
+        self.assertTrue(any("consulta usa un alcance anterior" in item.value for item in self.app.info))
         self.assert_clean()
 
     def test_example_scenarios_update_draft_and_evaluation(self):

@@ -11,7 +11,8 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 POLICY_PATH = Path(__file__).resolve().parents[1] / "config" / "instrument_policy.json"
-POLICY_VERSION = "educational-3"
+POLICY_VERSION = "argentina-4"
+STRICT_EXECUTION_SCOPE = "STRICT_EXECUTION"
 _REQUIRED = ("canonical_id", "instrument_type", "market", "category", "exposure",
              "quotation_currency", "subscription_currency", "economic_currency",
              "minimum", "costs", "settlement_days", "liquidity", "access")
@@ -280,11 +281,18 @@ def build_educational_selection(records, context, *, today=None, policy=None):
 
 
 def evaluate_candidate(record, context, *, today=None, policy=None):
-    return _eval(record, context or {}, today or datetime.now(timezone.utc).date(), policy or load_policy())
+    context = context or {}
+    if context.get("selection_scope") == "instrument_recommendation":
+        from .instrument_recommendations import evaluate_recommendation
+        return evaluate_recommendation(record, context, today=today, policy=policy or load_policy())
+    return _eval(record, context, today or datetime.now(timezone.utc).date(), policy or load_policy())
 
 
 def rank_candidates(records, context, *, today=None, policy=None):
     policy = policy or load_policy()
+    if (context or {}).get("selection_scope") == "instrument_recommendation":
+        from .instrument_recommendations import recommendation_rank
+        return recommendation_rank(records, context or {}, today=today, policy=policy)
     decisions = [_eval(x, context or {}, today or datetime.now(timezone.utc).date(), policy) for x in records]
     eligible = [x for x in decisions if x["eligible"]]
     eligible.sort(key=lambda x: (x["ranking_factors"]["riesgo"], x["ranking_factors"]["operacion"], x["ranking_factors"]["diversificacion"], x["ranking_factors"]["costos"], x["ranking_factors"]["familiaridad"], str(x.get("canonical_id") or "")))
@@ -303,6 +311,9 @@ def rank_candidates(records, context, *, today=None, policy=None):
 
 def decide_category(records, context, *, original_id=None, can_expand=False, today=None, policy=None):
     policy = policy or load_policy()
+    if (context or {}).get("selection_scope") == "instrument_recommendation":
+        from .instrument_recommendations import recommendation_decide_category
+        return recommendation_decide_category(records, context or {}, original_id=original_id, today=today, policy=policy)
     ranked = rank_candidates(records, context, today=today, policy=policy)
     eligible = [x for x in ranked if x["eligible"]]
     original = next((x for x in ranked if x.get("canonical_id") == original_id), None)

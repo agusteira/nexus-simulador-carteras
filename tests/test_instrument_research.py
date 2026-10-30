@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from nexus.instrument_knowledge import KnowledgeStore, load_universe
 from nexus.market_data import MarketDataError
-from nexus.instrument_research import ResearchLimits, research_instruments
+from nexus.instrument_research import ResearchLimits, _profile_context, research_instruments
 from nexus.instrument_rules import POLICY_VERSION
 
 
@@ -57,7 +57,8 @@ class InstrumentResearchTests(unittest.TestCase):
         snapshot = {**SNAPSHOT, "perfil": {**SNAPSHOT["perfil"], "acceso": ["local"], "tolerancia": 30, "liquidez": 20}}
         with tempfile.TemporaryDirectory() as directory:
             research = research_instruments(result, snapshot, [source], provider=False,
-                store=KnowledgeStore(directory + "/knowledge.db"), limits=ResearchLimits(0, 10, 20), today=date(2026, 10, 29))
+                store=KnowledgeStore(directory + "/knowledge.db"), limits=ResearchLimits(0, 10, 20), today=date(2026, 10, 29),
+                selection_scope="STRICT_EXECUTION")
         category = research["categories"][0]
         self.assertEqual(category["selected_id"], "ETF:COMPLETE:NYSE")
         self.assertEqual(category["original_id"], "ETF:INCOMPLETE00:NYSE")
@@ -73,7 +74,8 @@ class InstrumentResearchTests(unittest.TestCase):
         for candidates in (records, list(reversed(records))):
             with tempfile.TemporaryDirectory() as directory:
                 research = research_instruments(result, snapshot, [{"normalized_records": candidates}], provider=False,
-                    store=KnowledgeStore(directory + "/knowledge.db"), limits=ResearchLimits(0, 10, 10), today=date(2026, 10, 29))
+                    store=KnowledgeStore(directory + "/knowledge.db"), limits=ResearchLimits(0, 10, 10), today=date(2026, 10, 29),
+                    selection_scope="STRICT_EXECUTION")
             selected_ids.append(research["categories"][0]["selected_id"])
         self.assertEqual(selected_ids, ["ETF:UNFAMILIAR:NYSE", "ETF:UNFAMILIAR:NYSE"])
 
@@ -84,8 +86,12 @@ class InstrumentResearchTests(unittest.TestCase):
             "acceso": ["local"], "tolerancia": 30, "liquidez": 20}}
         with tempfile.TemporaryDirectory() as directory:
             research = research_instruments(result, snapshot, [{"normalized_records": [record]}], provider=False,
-                store=KnowledgeStore(directory + "/knowledge.db"), limits=ResearchLimits(0, 10, 10), today=date(2026, 10, 29))
+                store=KnowledgeStore(directory + "/knowledge.db"), limits=ResearchLimits(0, 10, 10), today=date(2026, 10, 29),
+                selection_scope="STRICT_EXECUTION")
         category = research["categories"][0]
+        self.assertEqual(snapshot["perfil"]["objetivo"], "Renta periodica")
+        context = _profile_context(snapshot, result, "Renta variable", 20000, 20, [])
+        self.assertEqual(context["objective"], "Renta")
         self.assertEqual(snapshot["perfil"]["objetivo"], "Renta periodica")
         self.assertEqual(category["selected_id"], "ETF:INCOME:NYSE")
         self.assertNotIn("context.objective", category["evaluated"][0]["missing_fields"])
@@ -150,8 +156,8 @@ class InstrumentResearchTests(unittest.TestCase):
         self.assertEqual(provider.calls, [])
         self.assertIn(POLICY_VERSION, research["policy_version"])
         category=research["categories"][0]
-        self.assertEqual(research["schema_version"], 3)
-        self.assertEqual(category["schema_version"], 3)
+        self.assertEqual(research["schema_version"], 4)
+        self.assertEqual(category["schema_version"], 4)
         self.assertEqual(category["educational_selection"]["status"], "NO_SELECTION")
         self.assertEqual(category["initial_evaluation"]["original_id"], "AR:FCI:1:1")
         self.assertLessEqual(len(category["educational_selection"]["cards"]),2)
@@ -299,6 +305,27 @@ class InstrumentResearchTests(unittest.TestCase):
         self.assertEqual(research["search"]["queries"], 0)
         self.assertEqual(research["categories"][0]["category"], "Renta variable")
 
+    def test_malformed_allocation_over_100_percent_requires_review_without_queries(self):
+        result = {**RESULT, "cartera_porcentual": {"Renta variable": 60, "Liquidez inmediata": 50}}
+        class NeverCalledProvider:
+            def __init__(self): self.calls = 0
+            def supports(self, record): return True
+            def source_key(self, record): return "https://example.test/source"
+            def research(self, record, **kwargs):
+                self.calls += 1
+                return record
+        with tempfile.TemporaryDirectory() as directory:
+            provider = NeverCalledProvider()
+            research = research_instruments(
+                result, SNAPSHOT, [], provider=provider,
+                store=KnowledgeStore(directory + "/knowledge.db"),
+                limits=ResearchLimits(12, 10, 12), today=date(2026, 10, 29),
+            )
+        self.assertEqual(provider.calls, 0)
+        self.assertEqual(len(research["categories"]), 2)
+        self.assertTrue(all(category["decision"] == "REQUIERE_REVISION" for category in research["categories"]))
+        self.assertTrue(all(not category["selected"] for category in research["categories"]))
+
     def test_store_constructor_failure_keeps_ephemeral_research_alive(self):
         with patch("nexus.instrument_research.KnowledgeStore", side_effect=OSError("private path")):
             research = research_instruments(RESULT, SNAPSHOT, [], provider=False,
@@ -306,7 +333,7 @@ class InstrumentResearchTests(unittest.TestCase):
         self.assertEqual(len(research["categories"]), 1)
         self.assertTrue(any("almacenamiento local" in e for e in research["search"]["errors"]))
 
-    def test_educational_universe_includes_reference_checked_copy(self):
+    def test_default_argentina_scope_does_not_select_curated_seed_without_required_facts(self):
         class FoundProvider(Provider):
             def research(self, record, **kwargs):
                 result = record.copy()
@@ -317,9 +344,11 @@ class InstrumentResearchTests(unittest.TestCase):
             research = research_instruments(RESULT, SNAPSHOT, [], provider=FoundProvider(),
                 store=KnowledgeStore(directory + "/knowledge.db"), limits=ResearchLimits(4, 10, 5),
                 today=date(2026, 10, 29))
-        spy = next(x for x in research["educational_universe"] if x["canonical_id"] == "ETF:SPY:NYSE_ARCA")
-        self.assertEqual(spy["availability"], "identity_confirmed")
-        self.assertTrue(any(e.get("source") == "fixture" for e in spy["evidence"]))
+        self.assertEqual(research["selection_scope"], "ARGENTINA_SIN_BROKER")
+        self.assertEqual(research["schema_version"], 4)
+        self.assertEqual(research["categories"][0]["selected"], [])
+        self.assertFalse(any(x.get("instrument_type") == "ETF"
+                             for x in research["categories"][0]["selected"]))
 
     def test_no_expand_event_when_category_has_no_curated_candidates(self):
         result = {**RESULT, "cartera_porcentual": {"Renta fija inflación": 100}}
