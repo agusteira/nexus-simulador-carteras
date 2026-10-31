@@ -136,8 +136,8 @@ def _execution_checks(record):
     if record.get("instrument_type") == "FCI":
         missing.extend(["broker_subscription_currency", "broker_redemption_channel"])
     return {"status": "PENDIENTE_INTERMEDIARIO", "missing_fields": missing,
-            "reasons": ["La selección del instrumento no valida una orden ni una cuenta concreta.",
-                        "Los cargos, el canal de fondeo y la autorización del intermediario permanecen sin verificar."]}
+            "reasons": ["Esta selección no confirma una orden ni una cuenta.",
+                        "Tu intermediario debe confirmar los cargos, el ingreso de dinero y si podés operar este instrumento."]}
 
 
 def _raw_fee_evidence(record, today):
@@ -211,14 +211,14 @@ def _positive_selection_explanation(record, context, annual_fee, *, today):
         entry = _fee_number((record.get("raw_fees") or {}).get("ingreso"))
         entry_evidence = _raw_fee_evidence(record, today)
         floor = minimum * (1 + entry / 100) if entry is not None and entry_evidence else minimum
-        items.append(
-            f"Mínimo publicado {minimum:g} {currency} (cota con ingreso conocido {floor:g}); "
-            f"presupuesto simulado {budget:g} {currency}; la moneda coincide."
-        )
+        entry_detail = (f" Con el cargo de entrada informado, el monto de referencia es {floor:g} {currency}."
+                        if entry is not None and entry_evidence else " No se agregó un cargo de entrada porque no hay un dato publicado y vigente.")
+        items.append(f"El mínimo publicado es {minimum:g} {currency}.{entry_detail} "
+                     f"El presupuesto simulado es {budget:g} {currency}, en la misma moneda.")
     elif record.get("instrument_type") in ("LOCAL_SHARE", "CEDEAR") and _finite(record.get("indicative_minimum")) and _finite(budget):
         items.append(
-            f"Cota indicativa para una unidad: {record['indicative_minimum']:g} {currency}; "
-            f"presupuesto simulado {budget:g} {currency} y moneda coincidente, antes de gastos; no se calcula cantidad."
+            f"La oferta observada para una unidad es {record['indicative_minimum']:g} {currency}. "
+            f"El presupuesto simulado es {budget:g} {currency}, en la misma moneda y antes de gastos."
         )
     if record.get("instrument_type") == "FCI":
         horizon = record.get("horizon")
@@ -226,46 +226,60 @@ def _positive_selection_explanation(record, context, annual_fee, *, today):
         user_horizon = context.get("horizon_months")
         detail = None
         if horizon or duration:
-            detail = f"Horizonte CAFCI {horizon}" if horizon else "Horizonte CAFCI flexible"
-            if duration:
-                detail += f", duración publicada {duration}"
+            horizon_labels = {"corto plazo": "corto plazo", "mediano plazo": "mediano plazo",
+                              "largo plazo": "largo plazo"}
+            normalized_horizon = str(horizon or "").casefold()
+            duration_value = str(duration or "").strip().casefold()
+            duration_applicable = duration_value not in ("", "no aplicable", "no aplica")
+            if normalized_horizon in horizon_labels:
+                detail = f"El fondo sugiere mantener la inversión a {horizon_labels[normalized_horizon]}"
+            elif horizon:
+                detail = f"El fondo informa un horizonte flexible" if "flexible" in normalized_horizon else None
+            if duration_applicable:
+                duration_detail = (f"El fondo informa una duración de {duration}, que describe sensibilidad a cambios en tasas; "
+                                   "no es un plazo fijo garantizado.")
+                detail = (detail + ". " if detail else "") + duration_detail
             if _finite(user_horizon):
-                detail += f"; el escenario prevé {user_horizon:g} meses."
+                user_detail = f"Tu simulación es de {user_horizon:g} meses."
+                detail = (detail + ". " if detail else "") + user_detail
         settlement = record.get("settlement_days")
         if _finite(settlement):
-            detail = (detail + "; " if detail else "") + f"rescate publicado T+{settlement:g} (sujeto a días hábiles, horario y canal)."
+            days = int(settlement) if float(settlement).is_integer() else settlement
+            day_label = "el mismo día hábil" if days == 0 else f"en {days:g} día hábil" if days == 1 else f"en {days:g} días hábiles"
+            timing = f"La fuente informa que al retirar el dinero se acredita {day_label} (T+{days:g}); el canal y el horario pueden influir."
+            detail = (detail + " " if detail else "") + timing
         if detail:
             items.append(detail)
     if category in ("Renta fija inflación", "Renta fija cambiaria"):
         derived = record.get("derived_exposure")
         key = "inflation" if category == "Renta fija inflación" else "fx"
         if isinstance(derived, dict) and _finite(derived.get(key)):
-            label = "exposición CER/UVA identificada" if key == "inflation" else "exposición vinculada al dólar identificada"
+            label = "activos identificados con ajuste por inflación" if key == "inflation" else "activos identificados cuyo valor se vincula al dólar"
             items.append(
-                f"Composición publicada {record.get('derived_exposure_date')}: "
-                f"{derived[key]:g}% de renglones con {label}; el resto queda desconocido."
+                f"Según la lista de inversiones del {record.get('derived_exposure_date')}, "
+                f"{derived[key]:g}% está en {label}. El resto no se verificó con este ajuste."
             )
     elif category == "Liquidez inmediata":
-        items.append("La clase está identificada como mercado de dinero y el rescate informado es T+0; no es un depósito garantizado ni disponibilidad 24/7.")
+        items.append("El fondo informa que invierte en instrumentos de mercado de dinero y que acredita rescates el mismo día hábil (T+0). No es un depósito garantizado ni implica disponibilidad todo el día.")
     elif category == "Renta variable":
         if record.get("instrument_type") in ("LOCAL_SHARE", "CEDEAR"):
             spread = context.get("_ranking_factors", {}).get("observed_spread")
-            items.append("La ficha acredita el instrumento de renta variable admitido; su cotización puede fluctuar y no se ha cuantificado su riesgo total.")
+            items.append("Invierte en acciones cuyo valor puede subir o bajar. No calculamos cuánto podrías perder ni qué empresa rendirá mejor.")
         else:
-            items.append("La fuente clasifica la exposición como renta variable; la concentración y el riesgo total no se afirman como medidos.")
+            items.append("El fondo informa exposición a acciones, cuyo valor puede subir o bajar. No medimos la pérdida posible ni la concentración total.")
     if annual_fee is not None:
         fee_date = (record.get("fund_fee_inference") or {}).get("data_date")
         items.append(
-            f"Gastos anuales del fondo derivados de componentes CAFCI publicados: {annual_fee:g}% "
-            f"(porcentaje del fondo, fecha {fee_date}; no es costo en pesos ni arancel del intermediario)."
+            f"Los gastos anuales publicados del fondo suman {annual_fee:g}% (dato del {fee_date}). "
+            "Son gastos del fondo; otros costos dependen de tu intermediario."
         )
     if record.get("instrument_type") in ("LOCAL_SHARE", "CEDEAR"):
         offer, bid = record.get("reference_offer_price"), record.get("reference_bid_price")
         if _finite(offer) and _finite(bid) and offer > 0:
             spread_pct = (offer - bid) / offer * 100
             items.append(
-                f"Snapshot BYMADATA observado: bid {bid:g}, offer {offer:g}, spread {spread_pct:.3g}%; "
-                "la fecha del último negocio no está informada y el precio no es ejecutable."
+                f"En la consulta de mercado, compradores ofrecían {bid:g} y vendedores pedían {offer:g}; "
+                f"la diferencia era {spread_pct:.3g}%. Es una referencia, no el precio final, y no se informa cuándo fue el último negocio."
             )
     # Keep a concise, repeatable set of the facts that actually support the
     # selection. Broker and data-age caveats remain in separate warnings/checks.
@@ -275,20 +289,20 @@ def _positive_selection_explanation(record, context, annual_fee, *, today):
 def _selection_warnings(record, annual_fee, today):
     warnings = []
     if record.get("instrument_type") == "FCI" and annual_fee is None:
-        warnings.append("Los componentes de gastos anuales no están completos o no tienen evidencia vigente; no se interpretan como cero.")
+        warnings.append("No hay datos completos y vigentes para calcular los gastos anuales del fondo; no se asumen como cero.")
     if record.get("derived_exposure_date"):
         try:
             age = (today - date.fromisoformat(str(record["derived_exposure_date"])[:10])).days
             if 7 < age <= 35:
-                warnings.append("La composición es la última publicada, tiene más de siete días y no representa las tenencias de hoy.")
+                warnings.append("La lista de inversiones tiene más de siete días; puede no reflejar la cartera actual.")
         except ValueError:
             pass
     if record.get("instrument_type") == "FCI" and record.get("exposure") == "equity":
-        warnings.append("La clasificación como renta variable no mide por sí sola el riesgo total ni la concentración de la cartera.")
+        warnings.append("La categoría de acciones no mide por sí sola cuánto podrías perder ni la concentración de la cartera.")
     elif record.get("instrument_type") in ("LOCAL_SHARE", "CEDEAR"):
-        warnings.append("El precio de referencia no es ejecutable y la fecha del último negocio no está informada.")
+        warnings.append("La cotización es una referencia, no el precio final; no se informa cuándo fue el último negocio.")
     if record.get("category") == "Liquidez inmediata" or record.get("derived_selection_category") == "Liquidez inmediata":
-        warnings.append("Mercado de dinero no es un depósito garantizado; el rescate depende de días hábiles, horarios y canal.")
+        warnings.append("Un fondo de mercado de dinero no es un depósito garantizado; los rescates dependen de días hábiles y del canal.")
     return list(dict.fromkeys(warnings))
 
 
@@ -424,15 +438,15 @@ def evaluate_recommendation(record, context, *, today=None, policy=None):
             rules.append(rule)
         reasons.append(reason)
     if r.get("contradictions") or r.get("validation_status") == "review":
-        add("R_CONTRADICCION", "Hay datos contradictorios que requieren revisión.")
+        add("R_CONTRADICCION", "Las fuentes muestran datos distintos para este instrumento; hay que revisar cuál es correcto.")
     itype = r.get("instrument_type")
     market = r.get("market")
     if itype not in _ALLOWED_TYPES or market not in ("AR:FCI", "BYMA"):
         excluded = True
-        add("R_MERCADO_NO_ADMITIDO", "La política solo evalúa FCI argentinos y valores BYMA de tipo admitido.")
+        add("R_MERCADO_NO_ADMITIDO", "Este tipo de instrumento no está incluido en la evaluación disponible.")
     if itype in ("CRYPTO", "CRYPTO_FUND") or str(r.get("exposure") or "").casefold() == "bitcoin":
         excluded = True
-        add("R_CRYPTO_POLICY", "La política de recomendación excluye criptoactivos y exposición Bitcoin.")
+        add("R_CRYPTO_POLICY", "Este instrumento tiene exposición a criptoactivos, que el simulador no evalúa.")
     category = context.get("category")
     if category not in _CATEGORIES:
         missing.append("context.category")
@@ -442,13 +456,13 @@ def evaluate_recommendation(record, context, *, today=None, policy=None):
     if (category in _CATEGORIES and r.get("category") and r.get("category") != category
             and not sibling_mandate_category):
         excluded = True
-        add("R_CATEGORIA_INCOMPATIBLE", "La categoría evidenciada no coincide con la asignación.")
+        add("R_CATEGORIA_INCOMPATIBLE", "La fuente clasifica este instrumento en una categoría distinta de la asignación elegida.")
     identity_fields = ["canonical_id", "instrument_type", "market", "quotation_currency"]
     missing.extend(_missing_fields(r, identity_fields, today, 30))
     for field in identity_fields:
         if _conflicting_evidence(r, field, today, 30):
             requires_review = True
-            add("R_CONTRADICCION", f"Fuentes vigentes discrepan sobre {field}.")
+            add("R_CONTRADICCION", "Las fuentes actuales no coinciden en un dato de la ficha; hay que revisarlo.")
     if not isinstance(r.get("name"), str) or not r["name"].strip():
         missing.append("name")
     if market == "BYMA" and not _evidence(r, "name", today, scope="product_identity"):
@@ -460,7 +474,7 @@ def evaluate_recommendation(record, context, *, today=None, policy=None):
         missing.append("context.currency")
     elif r.get("quotation_currency") and r["quotation_currency"] != currency:
         excluded = True
-        add("R_MONEDA_INCOMPATIBLE", "La moneda de cotización no coincide con la moneda simulada.")
+        add("R_MONEDA_INCOMPATIBLE", "La moneda de cotización no coincide con la moneda del escenario.")
     defer_mandate_exposure = (itype == "FCI" and category in ("Renta fija inflación", "Renta fija cambiaria")
                               and r.get("exposure_basis") == "mandate"
                               and (sibling_mandate_category or r.get("category") is None))
@@ -470,11 +484,11 @@ def evaluate_recommendation(record, context, *, today=None, policy=None):
         missing.extend(_missing_fields(r, ["category", "exposure"], today, 30))
         if r.get("exposure") != _CATEGORIES.get(r.get("category")):
             requires_review = True
-            add("R_CATEGORY_EXPOSURE_CONTRADICTION", "La exposición no corresponde a la categoría declarada.")
+            add("R_CATEGORY_EXPOSURE_CONTRADICTION", "La categoría y la exposición informadas no coinciden; hace falta revisar la ficha.")
         for field in ("category", "exposure"):
             if _conflicting_evidence(r, field, today, 30):
                 requires_review = True
-                add("R_CONTRADICCION", f"Fuentes vigentes discrepan sobre {field}.")
+                add("R_CONTRADICCION", "Las fuentes actuales no coinciden en un dato de la ficha; hay que revisarlo.")
     if context.get("objective") not in ("Preservacion", "Crecimiento", "Renta"):
         missing.append("context.objective")
     profile = context.get("profile")
@@ -497,38 +511,38 @@ def evaluate_recommendation(record, context, *, today=None, policy=None):
             if (isinstance(previous, dict) and previous.get("underlying_id") == r.get("underlying_id")
                     and _has(previous, "underlying_id", today, 30)):
                 excluded = True
-                add("R_OVERLAP", "El mismo fondo o subyacente ya está representado en otra categoría.")
+                add("R_OVERLAP", "Este fondo o activo subyacente ya aparece en otra categoría de la simulación.")
                 break
     if _finite(horizon) and _finite(r.get("settlement_days")) and r["settlement_days"] > horizon * 30:
         excluded = True
-        add("R_PLAZO_LIQUIDACION", "El plazo de liquidación excede el horizonte indicado.")
+        add("R_PLAZO_LIQUIDACION", "El plazo informado para retirar el dinero supera el horizonte de la simulación.")
     derived_exposure = None
     if itype == "FCI":
         required = ["minimum", "settlement_days", "fund_open", "subscription_open", "redemption_open", "qualified_only", "horizon"]
         missing.extend(_missing_fields(r, required, today, 7))
         if r.get("fund_open") is False or r.get("subscription_open") is False or r.get("redemption_open") is False or r.get("qualified_only") is True:
             excluded = True
-            add("R_FCI_NO_ABIERTO_MINORISTA", "La clase está cerrada o requiere calificación y no se recomienda.")
+            add("R_FCI_NO_ABIERTO_MINORISTA", "Esta clase está cerrada para suscripciones o requiere una calificación especial.")
         before_horizon_missing = len(missing)
         _fund_horizon(r, context, missing, policy, today)
         incompatible = {"horizon_incompatible", "duration_incompatible"} & set(missing[before_horizon_missing:])
         if incompatible:
             excluded = True
-            add("R_HORIZONTE_FCI_INCOMPATIBLE", "El horizonte declarado no cubre el horizonte mínimo o la duración informada del fondo.")
+            add("R_HORIZONTE_FCI_INCOMPATIBLE", "El plazo de la simulación no cubre el plazo mínimo o la sensibilidad a tasas informados por el fondo.")
         if category == "Liquidez inmediata":
             if r.get("category") != "Liquidez inmediata" or not _evidence(r, "category", today, max_age=7):
                 missing.append("money_market_classification_evidence")
             if r.get("settlement_days") != 0:
                 excluded = True
-                add("R_LIQUIDEZ_NO_T0", "Liquidez inmediata requiere rescate T+0 informado.")
+                add("R_LIQUIDEZ_NO_T0", "Para esta asignación se necesita rescatar el mismo día hábil, pero la fuente informa otro plazo.")
             if r.get("mm_kind"):
-                reasons.append("El tipo de dinero reportado es " + str(r["mm_kind"]) + "; no es un depósito garantizado.")
+                reasons.append("La ficha describe el instrumento como " + str(r["mm_kind"]) + "; no es un depósito garantizado.")
         elif category in ("Renta fija inflación", "Renta fija cambiaria"):
             derived_exposure, exp_missing = _exposure_share(r, "inflation" if category.endswith("inflación") else "fx", today, policy)
             missing.extend(exp_missing)
             if derived_exposure and derived_exposure["percent"] <= recommendation.get("minimum_specific_exposure_percent", 50):
                 excluded = True
-                add("R_EXPOSICION_ESPECIFICA_INSUFICIENTE", "La composición publicada no supera estrictamente 50% de exposición identificada.")
+                add("R_EXPOSICION_ESPECIFICA_INSUFICIENTE", "La lista publicada no permite identificar más de la mitad de la cartera como exposición a esta categoría.")
             elif derived_exposure:
                 derived_key = "inflation" if category == "Renta fija inflación" else "fx"
                 r["derived_exposure"] = {derived_key: derived_exposure["percent"]}
@@ -544,9 +558,9 @@ def evaluate_recommendation(record, context, *, today=None, policy=None):
                                         ("source", "url", "observed_at", "data_date", "version")},
                     "total_percent": derived_exposure["total_percent"],
                 }
-                add("R_EXPOSICION_INFERIDA_COMPOSICION", "La exposición se infiere de renglones explícitos de la composición publicada; no representa tenencias de hoy.")
+                add("R_EXPOSICION_INFERIDA_COMPOSICION", "La exposición se calcula a partir de nombres explícitos en la lista publicada; puede no reflejar la cartera actual.")
                 if (today - date.fromisoformat(str(derived_exposure["date"])[:10])).days > 7:
-                    reasons.append("La composición es la última fecha publicada y tiene más de siete días; no representa la cartera de hoy.")
+                    reasons.append("La lista de inversiones tiene más de siete días y puede no reflejar la cartera actual.")
             if r.get("exposure_basis") == "mandate" and not derived_exposure:
                 missing.append("actual_exposure_or_holdings")
         minimum = r.get("minimum")
@@ -559,16 +573,16 @@ def evaluate_recommendation(record, context, *, today=None, policy=None):
             entry = _fee_number(raw_entry)
             if _finite(r.get("entry_fee_pct")) and entry is not None and r["entry_fee_pct"] != entry:
                 requires_review = True
-                add("R_CONTRADICCION", "La comisión de ingreso normalizada no coincide con el porcentaje publicado.")
+                add("R_CONTRADICCION", "El cargo de entrada informado no coincide con el porcentaje publicado.")
             total = minimum * (1 + entry / 100) if _finite(entry) and entry >= 0 else minimum
             if budget < total:
                 excluded = True
-                add("R_PRESUPUESTO_MINIMO", "El presupuesto es inferior al mínimo de clase más la comisión de ingreso publicada, si existe.")
+                add("R_PRESUPUESTO_MINIMO", "El presupuesto no alcanza el mínimo de la clase más el cargo de entrada publicado, si corresponde.")
     elif itype in ("LOCAL_SHARE", "CEDEAR"):
         missing.extend(_missing_fields(r, ["ticker", "instrument_type", "market", "quotation_currency"], today, 30))
         if context.get("category") != "Renta variable":
             excluded = True
-            add("R_CATEGORIA_INCOMPATIBLE", "El valor negociado se compara solo en renta variable.")
+            add("R_CATEGORIA_INCOMPATIBLE", "Este valor negociado se evalúa solo para la categoría de acciones.")
         if itype == "CEDEAR":
             ordinary = str(r.get("underlying_type_source") or "").casefold().replace("_", " ")
             if ordinary not in {"ordinarias", "ordinarias escritural", "ordinarias escriturales", "acciones ordinarias"}:
@@ -586,10 +600,10 @@ def evaluate_recommendation(record, context, *, today=None, policy=None):
         if not all(_finite(x) and x > 0 for x in (offer, bid, offer_qty, bid_qty)):
             missing.append("valid_two_sided_market_snapshot")
         elif bid > offer:
-            add("R_SNAPSHOT_SPREAD_INVALIDO", "La oferta observada tiene precios cruzados.")
+            add("R_SNAPSHOT_SPREAD_INVALIDO", "La cotización recibida tiene precios incoherentes; hace falta revisar la fuente.")
         elif (offer - bid) / offer * 100 > recommendation.get("maximum_equity_spread_percent", 5):
             excluded = True
-            add("R_SPREAD_EXCESIVO", "El spread observado supera el máximo configurado.")
+            add("R_SPREAD_EXCESIVO", "La diferencia observada entre precio comprador y vendedor supera el límite del simulador.")
         if offer is not None and _finite(budget):
             rule = r.get("market_unit_rule")
             if (itype == "CEDEAR" and isinstance(rule, dict)
@@ -600,29 +614,29 @@ def evaluate_recommendation(record, context, *, today=None, policy=None):
                 r["indicative_minimum_inference"] = {"method": "precio de oferta referencial × unidad nominal normativa 1", "rule": deepcopy(rule)}
                 if budget < offer:
                     excluded = True
-                    add("R_PRESUPUESTO_MINIMO_INDICATIVO", "El presupuesto no alcanza la cota indicativa de una unidad, antes de gastos.")
+                    add("R_PRESUPUESTO_MINIMO_INDICATIVO", "El presupuesto no alcanza para una unidad al precio de oferta consultado, antes de gastos.")
             else:
                 missing.append("documented_market_unit_rule")
         if r.get("unit_price") is not None or r.get("quote_data_date") is not None:
             if r.get("unit_price") is not None:
-                add("R_PRECIO_NEGOCIO_NO_RESPALDADO", "La observación BYMADATA no informa fecha del último negocio.")
+                add("R_PRECIO_NEGOCIO_NO_RESPALDADO", "La consulta de mercado no informa cuándo ocurrió el último negocio.")
                 missing.append("unit_price_must_remain_unknown")
             if r.get("quote_data_date") is not None:
                 missing.append("quote_data_date_must_remain_unknown")
     is_equity = itype in ("LOCAL_SHARE", "CEDEAR") or r.get("exposure") == "equity"
     if is_equity:
         if profile == "CONSERVADOR":
-            excluded = True; add("R_PERFIL_EQUITY", "La política no admite renta variable para perfil conservador.")
+            excluded = True; add("R_PERFIL_EQUITY", "El simulador no incluye acciones para el perfil conservador.")
         caps = policy.get("equity_caps", {}).get("horizon_months", {})
         limit = caps.get("under_12", 0) if _finite(horizon) and horizon < 12 else (caps.get("12_to_35", 20) if _finite(horizon) and horizon < 36 else None)
         if limit is not None and _finite(weight) and weight > limit:
-            excluded = True; add("R_HORIZONTE_EQUITY", f"La asignación excede el tope de {limit}% para el horizonte indicado.")
+            excluded = True; add("R_HORIZONTE_EQUITY", f"La asignación supera el límite de {limit}% en acciones para este plazo.")
         if context.get("objective") == "Preservacion" and _finite(weight):
             limit = policy.get("equity_caps", {}).get("objectives", {}).get("Preservacion", 10)
             if limit is not None and weight > limit:
-                excluded = True; add("R_OBJETIVO_PRESERVACION", f"La asignación excede el tope de {limit}% para preservación.")
+                excluded = True; add("R_OBJETIVO_PRESERVACION", f"La asignación supera el límite de {limit}% en acciones para el objetivo de preservación.")
         if tolerance == 0:
-            excluded = True; add("R_TOLERANCIA_EQUITY", "La tolerancia declarada no admite renta variable.")
+            excluded = True; add("R_TOLERANCIA_EQUITY", "La tolerancia declarada no permite incluir acciones en esta asignación.")
     concentration_checks = {
         field: _recommendation_concentration(r, context, field, today, 7 if itype == "FCI" else 30)
         for field in ("issuer", "sector", "country", "underlying_id")
@@ -634,12 +648,12 @@ def evaluate_recommendation(record, context, *, today=None, policy=None):
         check = concentration_checks[field]
         if limit is not None and check["status"] == "known" and check["total_weight_percent"] > limit:
             excluded = True
-            add(rule, f"La concentración conocida por {label} supera el umbral configurado.")
+            add(rule, f"La concentración conocida por {label} supera el límite del simulador.")
     annual_fee, annual_fee_evidence = _annual_fund_fee(r, today) if itype == "FCI" else (None, None)
     if annual_fee is not None:
         if _reported_fee_mismatch(r, annual_fee):
             requires_review = True
-            add("R_CONTRADICCION", "Los gastos anuales normalizados no coinciden con la suma de los componentes publicados en la misma fuente.")
+            add("R_CONTRADICCION", "El total de gastos no coincide con la suma de los componentes publicados; hace falta revisar la ficha.")
         r["derived_fund_fee_annual_pct"] = annual_fee
         r["fund_fee_inference"] = {
             "method": "Suma de administración gerente, administración depositaria y gasto ordinario de gestión, solo si los tres porcentajes publicados están presentes.",
@@ -649,7 +663,7 @@ def evaluate_recommendation(record, context, *, today=None, policy=None):
             "data_date": annual_fee_evidence.get("data_date"), "kind": "inference",
         }
     elif itype == "FCI":
-        reasons.append("Los gastos anuales del fondo no están completos o no tienen evidencia vigente; no se interpretan como cero.")
+        reasons.append("No hay datos completos y vigentes para calcular los gastos anuales del fondo; no se asumen como cero.")
     factors = {"risk_fit": None,
                "risk_fit_status": "no comparable risk score in the inspected public source fields",
                "risk_classification": r.get("exposure"),
@@ -671,13 +685,13 @@ def evaluate_recommendation(record, context, *, today=None, policy=None):
         if value is not None and (not _finite(value) or value < 0 or
                                   (field in ("reference_offer_price", "reference_bid_price",
                                              "reference_offer_quantity", "reference_bid_quantity") and value == 0)):
-            add("R_DATO_NUMERICO_INVALIDO", f"El campo {field} tiene un valor numérico inválido.")
+            add("R_DATO_NUMERICO_INVALIDO", "La fuente contiene un valor numérico inválido; hace falta revisarlo.")
     if "R_SNAPSHOT_SPREAD_INVALIDO" in rules:
-        add("R_DATO_NUMERICO_INVALIDO", "El snapshot contiene precios cruzados.")
+        add("R_DATO_NUMERICO_INVALIDO", "La fuente contiene precios incoherentes; hace falta revisarlos.")
     invalid_holdings = any(key.endswith("_invalid") or key in ("holdings_total_invalid", "holdings_date_freshness")
                            for key in missing)
     if invalid_holdings:
-        add("R_DATO_NUMERICO_INVALIDO", "La composición contiene porcentajes o fechas inválidos.")
+        add("R_DATO_NUMERICO_INVALIDO", "La lista de inversiones contiene porcentajes o fechas inválidos.")
     missing = sorted(set(missing))
     review = requires_review or "R_DATO_NUMERICO_INVALIDO" in rules
     if review:
@@ -691,6 +705,10 @@ def evaluate_recommendation(record, context, *, today=None, policy=None):
     eligible = decision == "CONSERVAR_CANDIDATO"
     if eligible:
         explanation = _positive_selection_explanation(r, context, annual_fee, today=today)
+    elif decision == "REQUIERE_REVISION":
+        explanation = ["Hay datos de la fuente que no coinciden o son inválidos. Revisá la información antes de considerar este instrumento."]
+    elif decision == "INFORMACION_INSUFICIENTE":
+        explanation = ["No tenemos datos publicados y vigentes suficientes para comprobar los requisitos de este instrumento."]
     else:
         explanation = list(dict.fromkeys(reasons))
         if not explanation and missing:
@@ -782,39 +800,42 @@ def recommendation_decide_category(records, context, *, original_id=None, today=
             decision = "PROPONER_ALTERNATIVA_COMPATIBLE"
             if original and not original["eligible"]:
                 cause = (original.get("reasons") or [None])[0] or (
-                    "faltan " + ", ".join(original.get("missing_fields") or ["hechos requeridos"]))
-                reason = "El original no es elegible: " + cause
+                    "faltan datos publicados y vigentes para comprobar la opción original")
+                reason = "La opción original no pasó los controles: " + cause
             elif original:
                 old, new = original["ranking_factors"], winner["ranking_factors"]
                 difference = None
                 if old.get("settlement_days") is not None and new.get("settlement_days") is not None and old["settlement_days"] != new["settlement_days"]:
-                    difference = f"menor plazo de liquidación publicado ({new['settlement_days']} vs {old['settlement_days']} días)"
+                    difference = f"la fuente informa {new['settlement_days']} días para retirar el dinero, frente a {old['settlement_days']}"
                 elif (original["record"].get("instrument_type") == winner["record"].get("instrument_type") == "FCI"
                       and old.get("published_fund_fees") is not None and new.get("published_fund_fees") is not None
                       and old["published_fund_fees"] != new["published_fund_fees"]):
-                    difference = f"menor gasto anual de fondo publicado ({new['published_fund_fees']}% vs {old['published_fund_fees']}%)"
+                    difference = f"gastos anuales publicados de {new['published_fund_fees']}%, frente a {old['published_fund_fees']}%"
                 elif (original["record"].get("instrument_type") in ("LOCAL_SHARE", "CEDEAR")
                       and winner["record"].get("instrument_type") in ("LOCAL_SHARE", "CEDEAR")
                       and old.get("observed_spread") is not None and new.get("observed_spread") is not None
                       and old["observed_spread"] != new["observed_spread"]):
-                    difference = f"menor spread observado ({new['observed_spread']:.4g}% vs {old['observed_spread']:.4g}%)"
+                    difference = f"una diferencia menor entre precios comprador y vendedor ({new['observed_spread']:.4g}% frente a {old['observed_spread']:.4g}%)"
                 else:
                     a, b = old.get("observed_market_presence"), new.get("observed_market_presence")
                     if (isinstance(a, dict) and isinstance(b, dict) and a.get("kind") == b.get("kind")
                             and _finite(a.get("value")) and _finite(b.get("value")) and a["value"] != b["value"]):
-                        difference = f"mayor presencia observada en {b['kind']} ({b['value']} vs {a['value']})"
+                        kind = ("patrimonio informado del fondo" if b["kind"] == "fund_aum"
+                                else "monto operado informado")
+                        difference = f"mayor {kind} ({b['value']} frente a {a['value']})"
                 if difference:
-                    reason = f"Se propone la alternativa elegible por {difference}."
+                    reason = f"Se propone esta opción porque {difference}."
                 else:
-                    reason = "Ambos candidatos son elegibles; los datos no comparables no prueban una mejora de costos y el desempate estable fue la identidad canónica."
+                    reason = "Las opciones pasaron los controles y los datos no muestran una ventaja clara. Se usó un orden fijo para que la selección sea reproducible; no indica mayor rentabilidad."
             else:
-                reason = "El original no está en la cola investigada; se propone la alternativa elegible mejor posicionada y el original queda para auditoría."
+                reason = ("La opción elegida pasó los controles. La primera opción recibida quedó registrada para revisar, "
+                          "pero no se investigó con el mismo nivel de detalle y no pudo compararse con todos los datos.")
         else:
-            reason = "Se conserva el instrumento elegible de mejor posición según hechos y factores publicados."
+            reason = "La opción pasó los controles con los datos publicados disponibles."
     elif any(x["decision"] == "REQUIERE_REVISION" for x in ranked):
-        decision, reason = "REQUIERE_REVISION", "Hay datos contradictorios o inválidos que requieren revisión."
+        decision, reason = "REQUIERE_REVISION", "Hay datos de la fuente que no coinciden o son inválidos; hace falta revisarlos."
     else:
-        decision, reason = "INFORMACION_INSUFICIENTE", "No hay candidato que cumpla todas las comprobaciones de selección con evidencia vigente."
+        decision, reason = "INFORMACION_INSUFICIENTE", "No hay datos publicados y vigentes suficientes para comprobar los requisitos de las opciones revisadas."
     original = next((x for x in ranked if x.get("canonical_id") == original_id), None)
     return {"category": (context or {}).get("category"), "decision": decision,
             "original_id": original_id, "selected_id": winner.get("canonical_id") if winner else None,

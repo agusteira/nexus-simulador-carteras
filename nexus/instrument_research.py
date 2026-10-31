@@ -156,7 +156,7 @@ def research_instruments(result, snapshot, catalogs, *, refresh=False, today=Non
         try:
             store = KnowledgeStore()
         except Exception:
-            store_error = "No se pudo abrir el almacenamiento local de conocimiento."
+            store_error = "No se pudieron recuperar los datos de investigación guardados anteriormente."
             store = None
     universe = load_universe()
     source_pools, omitted, source_originals = _source_records(catalogs, today, limits.max_results)
@@ -242,14 +242,14 @@ def research_instruments(result, snapshot, catalogs, *, refresh=False, today=Non
             try:
                 candidate = store.save(candidate)
             except Exception:
-                errors.append("No se pudo guardar o recuperar conocimiento local.")
+                errors.append("No se pudieron guardar o recuperar los datos de investigación anteriores.")
         return candidate
     def cached_record(candidate):
         if store is None: return None
         try:
             return store.latest(candidate.get("canonical_id"))
         except Exception:
-            errors.append("No se pudo recuperar conocimiento local.")
+            errors.append("No se pudieron recuperar los datos de investigación anteriores.")
             return None
     curated = {}
     selected_records = []

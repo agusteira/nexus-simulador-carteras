@@ -1,5 +1,28 @@
 # Política de recomendación de instrumentos
 
+## Qué se comprueba antes de elegir
+
+Primero se revisa si el instrumento pertenece a los grupos que cubre esta versión y si hay datos publicados suficientes. Por ejemplo, un fondo necesita información sobre su moneda, monto mínimo, plazo para retirar el dinero y composición cuando se busca exposición a inflación o al dólar. Para una acción o un CEDEAR se revisan su identidad y las ofertas públicas disponibles. Si falta una condición necesaria o los datos se contradicen, el instrumento no pasa a la comparación.
+
+La exposición a inflación o al dólar se comprueba con la lista fechada de activos publicada por el fondo. Deben identificarse más de la mitad de sus activos y la lista debe tener como máximo 35 días. Por ejemplo, si en una lista de hace 20 días se identifica 60% de activos CER, el dato puede apoyar esa exposición para la regla. No demuestra qué tiene el fondo hoy. Que el fondo declare ese objetivo no reemplaza la composición publicada.
+
+## Cómo elige entre las opciones
+
+Entre los instrumentos que pasaron las comprobaciones, se comparan solo datos que se pueden contrastar. Por ejemplo, se pueden comparar gastos publicados de dos fondos o el margen entre oferta de compra y venta de dos valores observados. Un dato ausente sigue siendo desconocido; no se cuenta como cero. Si una categoría no tiene instrumentos que pasen las reglas, queda sin opción en vez de completar la lista con uno que no cumple.
+
+Una categoría tiene un monto simulado. NEXUS puede mostrar hasta dos opciones que compiten por ese mismo monto: la segunda es una alternativa que reemplaza a la primera, no una posición adicional.
+
+## Qué te queda confirmar
+
+La selección no comprueba que tu intermediario ofrezca el instrumento, habilite tu cuenta, acepte la moneda que tenés o cobre un costo determinado. Tampoco calcula una orden ejecutable. Antes de operar, esas condiciones, el precio final, la cantidad y los plazos se confirman con el intermediario. La revisión experta de las reglas sigue pendiente.
+
+Consultá el [glosario](glosario.md) para términos como FCI, cuotaparte, CEDEAR y T+0.
+
+<details>
+<summary>Umbrales, reglas y referencias técnicas</summary>
+
+## Detalle técnico y reglas vigentes
+
 La política `argentina-4` compara instrumentos identificados en el mercado argentino con hechos publicados y contexto congelado del escenario. La selección del instrumento es distinta de comprobar una orden en un intermediario. No demuestra que un usuario pueda operar un activo, no valida una cuenta concreta y no constituye validación profesional. `expert_review` permanece `pending`.
 
 ## Alcance y salidas
@@ -40,3 +63,5 @@ Los factores, umbrales y composición se pueden reproducir a partir de las entra
 - [Ficha técnica de títulos públicos](https://www.argentina.gob.ar/sites/default/files/ficha_tecnica_valuacion_titulos_publicos10052022.pdf): definición de bonos ajustables por CER.
 - [BYMA COM 17710](https://data-widgets.byma.com.ar/wp-content/uploads/2020/08/BYMA-COM-17710-Modificacion-de-unidad-minima-de-negociacion-CEDEAR.pdf): unidad nominal mínima de CEDEAR.
 - [Acceso público a BYMADATA](https://www.byma.com.ar/newsroom/byma-habilita-un-acceso-abierto-a-bymadata): contexto de demora del feed público. El evaluador conserva la hora observada de consulta, no la fecha de negocio.
+
+</details>

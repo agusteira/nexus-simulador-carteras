@@ -132,7 +132,7 @@ def _eval(record, context, today, policy):
         reasons.append(reason)
     contradiction = bool(r.get("contradictions")) or r.get("validation_status") == "review"
     if r.get("contradictions") or r.get("validation_status") == "review":
-        add("R_CONTRADICCION", "Hay datos contradictorios que requieren revisión.")
+        add("R_CONTRADICCION", "Las fuentes muestran datos distintos para este instrumento; hay que revisar cuál es correcto.")
     if r.get("validation_status") == "expired": missing.append("validation_status_freshness")
     itype = r.get("instrument_type")
     if itype not in _TYPES: missing.append("instrument_type")
@@ -143,17 +143,17 @@ def _eval(record, context, today, policy):
         elif not _evidence(r, field, today, field_age): missing.append(field + "_evidence")
         if _has_conflicting_evidence(r, field, today, field_age):
             contradiction = True
-            add("R_CONTRADICCION", f"Fuentes observadas discrepan sobre {field}.")
+            add("R_CONTRADICCION", "Las fuentes actuales no coinciden en un dato de la ficha; hay que revisarlo.")
     if itype == "FCI" and r.get("exposure_basis") == "mandate":
         missing.append("actual_exposure_or_holdings")
-        add("R_EXPOSICION_SOLO_MANDATO", "La fuente confirma el mandato declarado, pero no la exposición actual de la cartera.")
+        add("R_EXPOSICION_SOLO_MANDATO", "La fuente informa el objetivo del fondo, pero no qué activos tiene actualmente.")
     if itype in _TRADED:
         for field in ("lot_size", "unit_price"):
             if r.get(field) is None: missing.append(field)
             elif not _evidence(r, field, today, 1): missing.append(field + "_evidence")
             if _has_conflicting_evidence(r, field, today, 1):
                 contradiction = True
-                add("R_CONTRADICCION", f"Fuentes observadas discrepan sobre {field}.")
+                add("R_CONTRADICCION", "Las fuentes actuales no coinciden en un dato de la ficha; hay que revisarlo.")
     # A market quote needs fresh dated pricing; FCI has no quoted unit price.
     if itype in _TRADED and r.get("unit_price") is not None:
         dated = False
@@ -163,63 +163,63 @@ def _eval(record, context, today, policy):
     for field in ("minimum", "costs", "settlement_days", "lot_size", "unit_price"):
         v = r.get(field)
         if v is not None and (not _finite_num(v) or v < 0 or (field in ("lot_size", "unit_price") and v == 0)):
-            add("R_DATO_NUMERICO_INVALIDO", f"El campo {field} tiene un valor inválido.")
+            add("R_DATO_NUMERICO_INVALIDO", "La fuente contiene un valor numérico inválido; hace falta revisarlo.")
     if r.get("exposure") == "bitcoin" or itype in ("CRYPTO", "CRYPTO_FUND"):
-        add("R_CRYPTO_POLICY", "La política educativa excluye criptoactivos y vehículos con exposición a Bitcoin.")
+        add("R_CRYPTO_POLICY", "Este instrumento tiene exposición a criptoactivos, que el simulador no evalúa.")
     category = context.get("category")
     if category and r.get("category") and category != r.get("category"):
-        add("R_CATEGORIA_INCOMPATIBLE", "La categoría del instrumento no coincide con la asignación.")
+        add("R_CATEGORIA_INCOMPATIBLE", "La categoría informada no coincide con la asignación elegida.")
     if r.get("category") in _CATEGORY_EXPOSURE and r.get("exposure") not in ("unknown", None, _CATEGORY_EXPOSURE[r["category"]]):
-        add("R_CATEGORY_EXPOSURE_CONTRADICTION", "La categoría y exposición declaradas no corresponden.")
+        add("R_CATEGORY_EXPOSURE_CONTRADICTION", "La categoría y la exposición informadas no coinciden; hace falta revisar la ficha.")
     currency = context.get("currency")
     if r.get("quotation_currency") and r.get("subscription_currency") and r["quotation_currency"] != r["subscription_currency"]:
-        add("R_MONEDA_INCOMPATIBLE", "La moneda de cotización y suscripción no coincide.")
+        add("R_MONEDA_INCOMPATIBLE", "La moneda de cotización y la de suscripción son distintas.")
     if currency and currency != "unknown" and r.get("quotation_currency") not in (None, "unknown") and r.get("subscription_currency") not in (None, "unknown") and (r.get("quotation_currency") != currency or r.get("subscription_currency") != currency):
-        add("R_MONEDA_INCOMPATIBLE", "La moneda del instrumento no coincide con la moneda solicitada.")
+        add("R_MONEDA_INCOMPATIBLE", "La moneda del instrumento no coincide con la moneda del escenario.")
     budget = context.get("budget")
     if _finite_num(budget):
         minimum = r.get("minimum") if _finite_num(r.get("minimum")) else 0
         unit_total = r["lot_size"] * r["unit_price"] if _finite_num(r.get("lot_size")) and _finite_num(r.get("unit_price")) else 0
         if budget < max(minimum, unit_total):
-            add("R_PRESUPUESTO_MINIMO", "El presupuesto es inferior al mínimo operativo conocido.")
+            add("R_PRESUPUESTO_MINIMO", "El presupuesto no alcanza el mínimo o el monto necesario para una unidad, según los datos disponibles.")
         elif _finite_num(r.get("costs")) and budget < max(minimum, unit_total) + r["costs"]:
-            add("R_PRESUPUESTO_MINIMO", "El presupuesto es inferior al mínimo operativo más costos conocidos.")
+            add("R_PRESUPUESTO_MINIMO", "El presupuesto no alcanza el mínimo más los costos informados.")
     allowed = context.get("allowed_access")
     if r.get("access") in ("local", "international") and isinstance(allowed, list) and r["access"] not in allowed:
-        add("R_ACCESO_INCOMPATIBLE", "El acceso requerido no está habilitado para este instrumento.")
+        add("R_ACCESO_INCOMPATIBLE", "El acceso elegido no permite operar este instrumento.")
     if r.get("access") in (None, "unknown") or not isinstance(allowed, list) or not allowed:
         missing.append("access_authorization")
     profile, horizon, objective = context.get("profile"), context.get("horizon_months"), context.get("objective")
     is_equity = r.get("exposure") == "equity" or r.get("category") == "Renta variable"
-    if is_equity and profile == "CONSERVADOR": add("R_PERFIL_EQUITY", "La política no admite renta variable para perfil conservador.")
+    if is_equity and profile == "CONSERVADOR": add("R_PERFIL_EQUITY", "El simulador no incluye acciones para el perfil conservador.")
     allocation_weight = context.get("allocation_weight")
     if is_equity and not _finite_num(allocation_weight): missing.append("context.allocation_weight")
     if is_equity and _finite_num(horizon) and _finite_num(allocation_weight):
         caps = policy.get("equity_caps", {}).get("horizon_months", {})
         limit = caps.get("under_12", 0) if horizon < 12 else (caps.get("12_to_35", 20) if horizon < 36 else None)
         if limit is not None and allocation_weight > limit:
-            add("R_HORIZONTE_EQUITY", f"La asignación de renta variable supera el tope educativo de {limit}% para este horizonte.")
+            add("R_HORIZONTE_EQUITY", f"La asignación supera el límite de {limit}% en acciones para este plazo.")
     if is_equity and objective == "Preservacion" and _finite_num(allocation_weight):
         limit = policy.get("equity_caps", {}).get("objectives", {}).get("Preservacion", 10)
         if allocation_weight > limit:
-            add("R_OBJETIVO_PRESERVACION", f"La asignación de renta variable supera el tope educativo de {limit}% para preservación.")
-    if context.get("tolerance") == 0 and is_equity: add("R_TOLERANCIA_EQUITY", "La tolerancia declarada no admite renta variable.")
+            add("R_OBJETIVO_PRESERVACION", f"La asignación supera el límite de {limit}% en acciones para el objetivo de preservación.")
+    if context.get("tolerance") == 0 and is_equity: add("R_TOLERANCIA_EQUITY", "La tolerancia declarada no permite incluir acciones en esta asignación.")
     cash = r.get("category") == "Liquidez inmediata"
     requires_immediate = cash or (_finite_num(context.get("liquidity_required")) and context["liquidity_required"] >= policy.get("liquidity_required_immediate_at_or_above", 50))
     if requires_immediate:
         if _finite_num(r.get("settlement_days")) and r["settlement_days"] > 0:
-            add("R_LIQUIDEZ_INMEDIATA", "La asignación exige liquidación inmediata y el plazo es mayor que cero.")
+            add("R_LIQUIDEZ_INMEDIATA", "Esta asignación requiere rescatar el dinero el mismo día, pero la fuente informa otro plazo.")
         elif r.get("settlement_days") is None: missing.append("settlement_days")
         if r.get("liquidity") not in (None, "unknown", "immediate"):
-            add("R_LIQUIDEZ_INMEDIATA", "La liquidez declarada no es inmediata.")
+            add("R_LIQUIDEZ_INMEDIATA", "La liquidez informada no permite retirar el dinero de inmediato.")
         elif r.get("liquidity") != "immediate" or not _evidence(r, "liquidity", today, max_age): missing.append("liquidity_immediate_evidence")
     if _finite_num(horizon) and _finite_num(r.get("settlement_days")) and r["settlement_days"] > horizon * 30:
-        add("R_PLAZO_LIQUIDACION", "El plazo de liquidación excede el horizonte indicado.")
+        add("R_PLAZO_LIQUIDACION", "El plazo informado para retirar el dinero supera el horizonte de la simulación.")
     for existing in context.get("already_selected", []):
         current_underlying = r.get("underlying_id")
         existing_underlying = existing.get("underlying_id") or existing.get("canonical_id")
         if current_underlying and existing_underlying == current_underlying and _evidence(r, "underlying_id", today, max_age) and _evidence(existing, "underlying_id", today, max_age):
-            add("R_OVERLAP", "El instrumento se solapa con una posición ya seleccionada."); break
+            add("R_OVERLAP", "Este instrumento comparte un activo subyacente identificado con otra posición."); break
         r_holdings = r.get("holdings") or []
         e_holdings = existing.get("holdings") or []
         overlaps = set(r_holdings) & set(e_holdings) if _evidence(r, "holdings", today, max_age) and _evidence(existing, "holdings", today, max_age) else set()
@@ -232,7 +232,7 @@ def _eval(record, context, today, policy):
         limit = policy.get("concentration_limits_percent", {}).get(field)
         check = concentration_checks[field]
         if limit is not None and check["status"] == "known" and check["total_weight_percent"] > limit:
-            add(rule, f"La concentración conocida por {label} supera el umbral educativo.")
+            add(rule, f"La concentración conocida por {label} supera el límite del simulador.")
     if category not in _CATEGORY_EXPOSURE: missing.append("context.category")
     if profile not in ("CONSERVADOR", "MODERADO", "AGRESIVO"): missing.append("context.profile")
     if not _finite_num(horizon) or horizon <= 0: missing.append("context.horizon_months")
@@ -246,9 +246,9 @@ def _eval(record, context, today, policy):
     if r.get("category") not in _CATEGORY_EXPOSURE or r.get("exposure") in (None, "unknown"): missing.append("category_or_exposure")
     elif r.get("exposure") != _CATEGORY_EXPOSURE[r["category"]]:
         contradiction = True
-        add("R_CATEGORY_EXPOSURE_CONTRADICTION", "La exposición no corresponde a la categoría declarada.")
+        add("R_CATEGORY_EXPOSURE_CONTRADICTION", "La categoría y la exposición informadas no coinciden; hace falta revisar la ficha.")
     if itype in _TYPES and itype != "FCI" and not r.get("ticker"): missing.append("ticker")
-    if missing: add("R_EVIDENCIA_INSUFICIENTE", "Faltan datos o evidencia vigente para evaluar compatibilidad.")
+    if missing: add("R_EVIDENCIA_INSUFICIENTE", "Faltan datos publicados y vigentes para comprobar si este instrumento encaja con el escenario.")
     exclude_ids = {"R_CRYPTO_POLICY", "R_CATEGORIA_INCOMPATIBLE", "R_MONEDA_INCOMPATIBLE", "R_PRESUPUESTO_MINIMO", "R_ACCESO_INCOMPATIBLE", "R_PERFIL_EQUITY", "R_HORIZONTE_EQUITY", "R_OBJETIVO_PRESERVACION", "R_TOLERANCIA_EQUITY", "R_LIQUIDEZ_INMEDIATA", "R_PLAZO_LIQUIDACION", "R_OVERLAP", "R_CONCENTRACION_EMISOR", "R_CONCENTRACION_SECTOR", "R_CONCENTRACION_PAIS"}
     if contradiction or "R_DATO_NUMERICO_INVALIDO" in rules: decision = "REQUIERE_REVISION"
     elif any(x in exclude_ids for x in rules): decision = "EXCLUIR_CANDIDATO"
@@ -305,7 +305,7 @@ def rank_candidates(records, context, *, today=None, policy=None):
             item["eligible"] = False
             item["decision"] = "EXCLUIR_CANDIDATO"
             if "R_OVERLAP" not in item["rule_ids"]: item["rule_ids"].append("R_OVERLAP")
-            item["reasons"].append("Se descarta por duplicar un subyacente ya representado en el orden elegible.")
+            item["reasons"].append("Se deja fuera porque el mismo activo subyacente ya aparece en una opción anterior.")
     return deduplicated + [x for x in decisions if not x["eligible"]]
 
 
@@ -322,12 +322,18 @@ def decide_category(records, context, *, original_id=None, can_expand=False, tod
         old_factors = original.get("ranking_factors", {}) if original else {}
         new_factors = winner["ranking_factors"]
         changed = [k for k in ("riesgo", "operacion", "diversificacion", "costos", "familiaridad") if new_factors.get(k) != old_factors.get(k)]
-        detail = f"Mejora {changed[0]} ({old_factors.get(changed[0])} → {new_factors.get(changed[0])})." if changed else "El candidato original no es elegible."
-        decision, ids, reason = "PROPONER_ALTERNATIVA_COMPATIBLE", ["R_ALTERNATIVA_COMPATIBLE"], f"Se propone {winner.get('name') or winner.get('canonical_id')}: {detail}"
-    elif winner: decision, ids, reason = "CONSERVAR_CANDIDATO", ["R_ELEGIBLE_EDUCATIVO"], "Candidato elegible bajo reglas educativas; no constituye validación financiera."
-    elif can_expand: decision, ids, reason = "AMPLIAR_BUSQUEDA", ["R_SIN_CANDIDATO_AMPLIAR"], "No hay candidatos elegibles; ampliar la búsqueda y aportar evidencia."
-    elif any(x["decision"] == "REQUIERE_REVISION" for x in ranked): decision, ids, reason = "REQUIERE_REVISION", [], "Los candidatos presentan contradicciones o valores inválidos."
-    else: decision, ids, reason = "INFORMACION_INSUFICIENTE", [], "No hay información suficiente para seleccionar un candidato."
+        if changed:
+            labels = {"riesgo": "clasificación usada por las reglas", "operacion": "plazo informado",
+                      "diversificacion": "composición conocida", "costos": "costos informados",
+                      "familiaridad": "reconocimiento registrado"}
+            detail = f"El orden prioriza {labels[changed[0]]} ({new_factors.get(changed[0])} frente a {old_factors.get(changed[0])})."
+        else:
+            detail = "No se observó una diferencia clara en los factores comparados."
+        decision, ids, reason = "PROPONER_ALTERNATIVA_COMPATIBLE", ["R_ALTERNATIVA_COMPATIBLE"], f"La opción propuesta pasó los controles de esta evaluación. {detail} El orden no indica mayor rentabilidad."
+    elif winner: decision, ids, reason = "CONSERVAR_CANDIDATO", ["R_ELEGIBLE_EDUCATIVO"], "La opción pasó los controles con los datos publicados disponibles."
+    elif can_expand: decision, ids, reason = "AMPLIAR_BUSQUEDA", ["R_SIN_CANDIDATO_AMPLIAR"], "Ninguna opción pasó los controles todavía. Ampliá la búsqueda o aportá más datos publicados."
+    elif any(x["decision"] == "REQUIERE_REVISION" for x in ranked): decision, ids, reason = "REQUIERE_REVISION", [], "Hay datos de la fuente que no coinciden o son inválidos; hace falta revisarlos."
+    else: decision, ids, reason = "INFORMACION_INSUFICIENTE", [], "No hay datos publicados y vigentes suficientes para comprobar los requisitos de las opciones revisadas."
     selected = [winner["record"]] if winner else []
     selection_exclusions = []
     if winner:

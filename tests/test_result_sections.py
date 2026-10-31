@@ -118,7 +118,7 @@ class ResultSectionsTest(unittest.TestCase):
     def test_three_native_tabs_and_research_categories_start_collapsed(self):
         labels = [tab.label for tab in self.app.get("tab")]
         self.assertEqual(labels, ["Resultado de la simulación", "Del porcentaje a ejemplos reales", "Cómo se interpretaron tus respuestas"])
-        target = next(item for item in self.app.expander if item.label.startswith("Renta variable ·") and "candidato seleccionado" in item.label)
+        target = next(item for item in self.app.expander if item.label.startswith("Renta variable ·") and "opción seleccionada" in item.label)
         self.assertFalse(target.proto.expanded)
         self.assertEqual(self.query_mock.call_count, 1)
 
@@ -128,9 +128,9 @@ class ResultSectionsTest(unittest.TestCase):
         text_values = self._visible_text()
         self.assertTrue(any("Instrumentos recomendados para tu simulación" in value for value in text_values))
         self.assertTrue(any("Empresa XYZ de prueba" in value for value in text_values))
-        self.assertTrue(any("Moneda de cotización: coincide con la simulación" in value for value in text_values))
-        self.assertTrue(any("Moneda de suscripción: se confirma con el intermediario." in value for value in text_values))
-        self.assertTrue(any("selección independiente del broker" in value for value in text_values))
+        self.assertTrue(any("Moneda en la que se informa el precio o la clase del fondo: coincide con la simulación" in value for value in text_values))
+        self.assertTrue(any("Con qué moneda podés ingresar el dinero: confirmalo con tu intermediario." in value for value in text_values))
+        self.assertTrue(any("opciones de inversión del mercado argentino" in value for value in text_values))
         self.assertFalse(any("Fondo alfabético legacy" in value or "Alternativa legacy" in value for value in text_values))
         self.assertFalse(any("SPY educativo" in value for value in text_values))
         saved_json = json.dumps(saved, ensure_ascii=False)
@@ -164,7 +164,7 @@ class ResultSectionsTest(unittest.TestCase):
         research["schema_version"] = 3
         self._set_research(research)
         text_values = self._visible_text()
-        self.assertTrue(any("alcance anterior" in value and "Actualizá" in value for value in text_values))
+        self.assertTrue(any("versión anterior" in value and "Actualizá" in value for value in text_values))
         self.assertFalse(any("SPY educativo" in value or "Empresa XYZ de prueba" in value for value in text_values))
 
     def test_unknown_but_eligible_selected_candidate_is_rendered(self):
@@ -192,13 +192,13 @@ class ResultSectionsTest(unittest.TestCase):
         self._set_research(research)
         text_values = self._visible_text()
         self.assertFalse(any("Candidato inválido" in value for value in text_values))
-        self.assertTrue(any("no coincide con una evaluación elegible" in value for value in text_values))
+        self.assertTrue(any("no pudimos confirmar que haya pasado todos los controles" in value for value in text_values))
 
     def test_old_v3_scope_requests_update(self):
         research = self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]["investigacion"]
         research["schema_version"] = 3
         self._set_research(research)
-        self.assertTrue(any("alcance anterior" in value and "Actualizá" in value for value in self._visible_text()))
+        self.assertTrue(any("versión anterior" in value and "Actualizá" in value for value in self._visible_text()))
 
     def test_broker_checks_do_not_block_recommendation_but_required_facts_do(self):
         research = self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]["investigacion"]

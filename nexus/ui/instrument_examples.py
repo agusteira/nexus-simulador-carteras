@@ -15,8 +15,13 @@ from .common import fecha_fmt, moneda_fmt
 
 def render(result, snapshot):
     st.markdown("## Instrumentos recomendados para tu simulación")
-    st.write("Mercado argentino · selección independiente del broker.")
-    st.caption("La selección compara datos públicos. Antes de operar, confirmá las condiciones y costos de tu intermediario.")
+    st.write("Son opciones de inversión del mercado argentino que pasaron los controles de esta simulación.")
+    st.caption("La app compara tus respuestas con datos publicados. No predice qué empresa ganará más. Un intermediario o broker es la empresa o banco donde invertís; allí debés confirmar disponibilidad, precios y costos.")
+    with st.expander("Palabras útiles para entender estas opciones", expanded=False):
+        st.write("Una acción es una pequeña participación en una empresa. Su valor puede subir o bajar.")
+        st.write("Un fondo común de inversión (FCI) reúne dinero de muchas personas para invertirlo en distintos activos. Al participar, comprás una parte del fondo, llamada cuotaparte.")
+        st.write("Rescatar es pedir que te devuelvan el dinero invertido en un fondo. El plazo se cuenta desde el pedido y depende de días hábiles y horarios.")
+        st.write("Que un instrumento pase los controles significa que encaja con las reglas de la simulación. Puede perder valor y no garantiza ganancias.")
 
     saved = result.get("ejemplos_instrumentos")
     if saved is None and not is_result_stale():
@@ -38,7 +43,7 @@ def render(result, snapshot):
         return
 
     if research.get("schema_version") != 4 or research.get("scope") != "ARGENTINA_SIN_BROKER":
-        st.info("Esta consulta usa un alcance anterior. Actualizá la investigación para obtener la selección del mercado argentino sin broker.")
+        st.info("Esta consulta se guardó con una versión anterior. Actualizá la investigación para aplicar las reglas actuales; la consulta anterior queda en el historial.")
         _render_sources_and_limits(saved, research)
         return
 
@@ -50,7 +55,7 @@ def render(result, snapshot):
             continue
         category_research = research_by_category.get(category, {})
         selected, malformed = _validated_selected(category_research)
-        count_label = "candidato seleccionado" if len(selected) == 1 else "candidatos seleccionados"
+        count_label = "opción seleccionada" if len(selected) == 1 else "opciones seleccionadas"
         label = (f"{category} · {weight:g}% · {len(selected)} {count_label}"
                  if selected else f"{category} · {weight:g}% · Sin selección: faltan datos o revisión")
         with st.expander(label, expanded=False):
@@ -64,12 +69,12 @@ def render(result, snapshot):
                 st.caption(f"Monto simulado para esta categoría: {moneda_fmt(amount, currency)} {currency}.")
 
             if malformed:
-                st.warning("La investigación contiene una selección que no coincide con una evaluación elegible. No se muestra esa ficha.")
+                st.warning("No mostramos esta opción porque no pudimos confirmar que haya pasado todos los controles. Podés actualizar la investigación para volver a comprobarla.")
             if selected:
                 for index, candidate in enumerate(selected[:2]):
                     record = candidate.get("record", {})
                     if len(selected) > 1:
-                        st.caption("Opción principal" if index == 0 else "Alternativa evaluada; no se suma como una segunda posición")
+                        st.caption("Opción principal" if index == 0 else "Otra opción para el mismo monto; no se agrega dinero a la distribución")
                     _render_card(record, currency, research, category, index, candidate)
                 _render_comparison(category_research)
                 category_explanation = category_research.get("selection_explanation") or []
@@ -119,25 +124,32 @@ def _render_card(card, currency, research, category, index, evaluation):
     with st.container(border=True):
         name = card.get("name") or card.get("canonical_id") or "Instrumento sin nombre"
         st.markdown(f"<h3>{escape(_display_name(card))}</h3>", unsafe_allow_html=True)
+        st.caption(_type_label(card.get('instrument_type')))
+        st.write(_what_is(card))
         explanation = evaluation.get("selection_explanation") or evaluation.get("reasons") or evaluation.get("reason")
         if explanation:
-            st.write(_join_reasons(explanation) if isinstance(explanation, list) else str(explanation))
-        st.text(f"{_type_label(card.get('instrument_type'))} · {card.get('market') or 'mercado no confirmado'}")
-        description = card.get("educational_description") or card.get("description") or _what_is(card)
-        st.text(description)
+            with st.expander("Por qué aparece esta opción", expanded=False):
+                for reason in explanation if isinstance(explanation, list) else [explanation]:
+                    st.write(str(reason))
+        description = card.get("educational_description") or card.get("description")
+        if description:
+            with st.expander("Descripción publicada y nombre en el mercado", expanded=False):
+                st.caption("Texto guardado de la ficha consultada. Puede usar términos técnicos o comerciales; los controles de la app se muestran por separado.")
+                st.text(description)
+                st.caption(f"Mercado informado: {card.get('market') or 'sin dato'}.")
 
         currency_status = _selected_currency_status(card, currency)
-        st.text(f"Moneda de cotización: {currency_status}")
+        st.text(f"Moneda en la que se informa el precio o la clase del fondo: {currency_status}.")
         if not card.get("subscription_currency") or card.get("subscription_currency") == "unknown":
-            st.caption("Moneda de suscripción: se confirma con el intermediario.")
+            st.caption("Con qué moneda podés ingresar el dinero: confirmalo con tu intermediario.")
         else:
-            st.caption(f"Moneda de suscripción informada: {card['subscription_currency']}.")
+            st.caption(f"Moneda informada para ingresar dinero: {card['subscription_currency']}.")
 
         missing = evaluation.get("missing_fields", []) or []
         if card.get("minimum") is not None:
-            st.text(f"Mínimo publicado antes de comisiones: {moneda_fmt(card['minimum'], card.get('quotation_currency') or currency)} {card.get('quotation_currency') or currency}.")
+            st.text(f"Monto mínimo publicado para empezar: {moneda_fmt(card['minimum'], card.get('quotation_currency') or currency)} {card.get('quotation_currency') or currency}, antes de comisiones.")
         if card.get("reference_offer_price") is not None and card.get("snapshot_observed_at"):
-            st.text(f"Oferta vendedora referencial observada: {moneda_fmt(card['reference_offer_price'], currency)} {currency}.")
+            st.text(f"Precio de venta que mostraba la fuente: {moneda_fmt(card['reference_offer_price'], currency)} {currency}. Es una referencia, no el precio final de una compra.")
             st.caption(f"Consulta al portal: {fecha_fmt(card['snapshot_observed_at'])}. La fuente anuncia datos con {card.get('snapshot_delay_minutes', 20)} minutos de demora y no informa la fecha del último negocio. El precio final se confirma antes de operar.")
         if card.get("unit_price") is not None and (card.get("price_date") or card.get("quote_date")):
             st.text(f"Precio referencial: {card['unit_price']} {card.get('quotation_currency') or currency} · fecha {card.get('price_date') or card.get('quote_date')}.")
@@ -155,39 +167,47 @@ def _render_card(card, currency, research, category, index, evaluation):
             else:
                 st.caption("Precio referencial publicado; puede no reflejar el valor actual.")
         if card.get("lot_size") is not None and _has_field_evidence(card, "lot_size"):
-            st.text(f"Lote publicado: {card['lot_size']}.")
+            st.text(f"Cantidad mínima de unidades informada para una operación: {card['lot_size']}.")
         if card.get("fund_fee_annual_pct") is not None:
-            st.text(f"Gastos anuales publicados que se pudieron comparar: {_number_fmt(card['fund_fee_annual_pct'])}% anual.")
+            st.text(f"Gastos anuales publicados del fondo: {_number_fmt(card['fund_fee_annual_pct'])}%. No incluyen todos los posibles costos de operar.")
+            if card['fund_fee_annual_pct'] == 0:
+                st.caption("La fuente informa cero en esos gastos; eso no asegura que invertir sea gratis.")
         if card.get("settlement_days") is not None:
-            st.text(f"Plazo de liquidación publicado: {_number_fmt(card['settlement_days'])} días hábiles.")
+            days = card['settlement_days']
+            if card.get('instrument_type') == 'FCI':
+                timing = "el mismo día hábil" if days == 0 else f"en {_number_fmt(days)} día{'s' if days != 1 else ''} hábil{'es' if days != 1 else ''}"
+                st.text(f"Al pedir retirar el dinero, el fondo informa que lo entrega {timing}. Depende de los horarios y del canal que uses.")
+            else:
+                st.text(f"Plazo informado para completar la operación y entregar dinero o títulos: {_number_fmt(days)} días hábiles.")
         metric = card.get("market_metric")
         if not isinstance(metric, dict) and card.get("volume") is not None:
             metric = {"name": "Volumen informado", "value": card.get("volume"),
                       "unit": card.get("volume_unit"), "date": card.get("volume_date")}
         if isinstance(metric, dict) and metric.get("value") is not None:
-            metric_name = metric.get("name") or metric.get("label") or {"patrimonio_clase": "Patrimonio reportado de la clase", "monto_negociado_observado": "Monto negociado observado en el portal"}.get(metric.get("metric"), "Métrica de mercado")
+            metric_name = {"patrimonio_clase": "Dinero total administrado en esta clase del fondo", "monto_negociado_observado": "Monto de operaciones que mostraba el portal"}.get(metric.get("metric")) or metric.get("name") or metric.get("label") or "Dato de actividad del mercado"
             metric_unit = metric.get("unit") or metric.get("currency") or ""
             metric_date = metric.get("date") or metric.get("period") or metric.get("observed_at")
             metric_value = moneda_fmt(metric["value"], currency) if isinstance(metric["value"], (int, float)) and not isinstance(metric["value"], bool) else str(metric["value"])
             st.text(f"{metric_name}: {metric_value} {metric_unit}".strip() + (f" · referencia {metric_date}." if metric_date else "."))
+            st.caption("Este dato describe el tamaño o la actividad informados; no mide la seguridad de la inversión.")
         derived = card.get("derived_exposure")
         if isinstance(derived, dict):
             exposure_names = {"inflation": "instrumentos con ajuste por inflación", "fx": "instrumentos vinculados al tipo de cambio"}
-            st.text("Exposición identificada en la composición: " + ", ".join(f"{_number_fmt(value)}% en {exposure_names.get(key, key)}" for key, value in derived.items()) + ".")
+            st.text("De las inversiones publicadas del fondo pudimos identificar: " + ", ".join(f"{_number_fmt(value)}% en {exposure_names.get(key, key)}" for key, value in derived.items()) + ".")
             if card.get("derived_exposure_date"):
                 st.caption(f"Composición publicada al {card['derived_exposure_date']}; las tenencias pueden haber cambiado.")
             if card.get("derived_exposure_reasons"):
                 st.caption(_join_reasons(card["derived_exposure_reasons"]))
         holdings = card.get("holdings_details") or []
         if holdings and card.get("holdings_date") and _has_field_evidence(card, "holdings_details"):
-            st.text("Principales posiciones informadas: " + "; ".join(
+            st.text("En qué invierte, según sus principales inversiones publicadas: " + "; ".join(
                 f"{item.get('name')}: {_number_fmt(item.get('weight'))}%" for item in holdings[:4] if isinstance(item, dict)))
             if card.get("holdings_date"):
                 st.caption(f"Fecha de composición informada: {card['holdings_date']}; las tenencias pueden haber cambiado.")
 
         execution_checks = evaluation.get("execution_checks") or {}
         with st.expander("Qué confirmar con tu intermediario", expanded=False):
-            st.caption("La selección no confirma que tu intermediario ofrezca el instrumento ni que una orden pueda ejecutarse.")
+            st.caption("Antes de invertir, preguntá a tu banco o empresa de inversiones si ofrece esta opción, con qué monto y moneda podés entrar, cuánto cobra y cuándo podés retirar el dinero.")
             broker_missing = execution_checks.get("missing_fields") or []
             if broker_missing:
                 st.text("Por confirmar: " + ", ".join(_field_label(field) for field in broker_missing) + ".")
@@ -196,10 +216,12 @@ def _render_card(card, currency, research, category, index, evaluation):
             if not broker_missing and not execution_checks.get("reasons"):
                 st.text("Confirmá disponibilidad, condiciones y costos con tu intermediario.")
         if evaluation.get("reasons"):
-            with st.expander("Reglas y motivos de la selección", expanded=False):
+            with st.expander("Controles que se aplicaron", expanded=False):
                 st.text(_join_reasons(evaluation["reasons"]))
                 if missing:
-                    st.text("Datos bloqueantes de la recomendación: " + ", ".join(_field_label(field) for field in missing) + ".")
+                    st.text("Datos necesarios que faltan: " + ", ".join(_field_label(field) for field in missing) + ".")
+        for warning in evaluation.get("selection_warnings") or []:
+            st.caption(str(warning))
         if card.get("risks"):
             st.text("Riesgos: " + "; ".join(str(x) for x in card["risks"][:3]))
 
@@ -210,20 +232,20 @@ def _render_card(card, currency, research, category, index, evaluation):
             date_text = primary_evidence.get("data_date") or "fecha de contenido no informada"
             if url:
                 st.link_button(f"Fuente: {urlparse(url).netloc}", url, width="stretch")
-            st.text(f"Observación: {fecha_fmt(observed) if observed else 'fecha no informada'} · {date_text}.")
+            st.text(f"Consultado el {fecha_fmt(observed) if observed else 'día no informado'}. Fecha del dato: {date_text}.")
 
         key = f"referencia_{research.get('execution_id')}_{category}_{card.get('canonical_id')}_{card.get('knowledge_version', 0)}"
-        kind = st.selectbox("Tu señal", ["understood", "known", "correction"],
+        kind = st.selectbox("¿Te ayudó esta explicación?", ["understood", "known", "correction"],
                             key=key + "_kind",
                             format_func=lambda value: {"understood": "Entendí", "known": "Ya lo conocía", "correction": "Señalar un dato"}[value])
         note = st.text_input("Dato para revisar", key=key + "_note") if kind == "correction" else ""
-        if st.button("Guardar señal para futuras revisiones", key=key + "_save"):
+        if st.button("Guardar mi comentario", key=key + "_save"):
             try:
                 KnowledgeStore().feedback(card["canonical_id"], kind, note,
                                           execution_id=research.get("execution_id"))
-                st.success("Señal guardada. Esta ficha de la evaluación no cambia.")
+                st.success("Comentario guardado para futuras revisiones. El resultado de esta simulación se conserva.")
             except Exception:
-                st.warning("No se pudo guardar la señal local.")
+                st.warning("No pudimos guardar tu comentario. Podés intentarlo de nuevo.")
 
 
 def _number_fmt(value):
@@ -235,11 +257,11 @@ def _number_fmt(value):
 def _render_no_selection(category_research):
     evaluated = category_research.get("evaluated") or []
     eligible_count = sum(item.get("eligible") is True for item in evaluated)
-    excluded_count = sum(str(item.get("decision", "")).upper() == "EXCLUIR_CANDIDATO" for item in evaluated)
+    excluded_count = sum(str(item.get("decision", "")).upper() in {"EXCLUIR", "EXCLUIR_CANDIDATO"} for item in evaluated)
     pending = [item for item in evaluated if item.get("eligible") is not True
-               and str(item.get("decision", "")).upper() != "EXCLUIR_CANDIDATO"]
-    st.warning("No hay un instrumento seleccionado para esta categoría con la evidencia disponible.")
-    st.caption(f"Analizados: {len(evaluated)} · elegibles: {eligible_count} · excluidos: {excluded_count} · pendientes de revisión: {len(pending)}.")
+               and str(item.get("decision", "")).upper() not in {"EXCLUIR", "EXCLUIR_CANDIDATO"}]
+    st.warning("No pudimos elegir una opción para este grupo con los datos disponibles. La distribución de tu dinero sigue siendo la misma.")
+    st.caption(f"Opciones revisadas: {len(evaluated)} · pasaron los controles: {eligible_count} · descartadas: {excluded_count} · falta comprobar: {len(pending)}.")
     missing = []
     reasons = []
     for item in evaluated:
@@ -262,7 +284,7 @@ def _render_no_selection(category_research):
         if details:
             st.caption("Cobertura: " + " · ".join(map(str, details)) + ".")
     if reasons:
-        with st.expander("Motivos y candidatos revisados", expanded=False):
+        with st.expander("Qué faltó y qué opciones se revisaron", expanded=False):
             for item in evaluated:
                 record = item.get("record") or {}
                 name = record.get("name") or item.get("canonical_id") or "Candidato"
@@ -277,16 +299,20 @@ def _render_comparison(category_research):
     alternative = comparison.get("alternative") or {}
     if not original and not alternative:
         return
-    with st.expander("Comparación y factores de decisión", expanded=False):
-        for label, candidate in (("Candidato original", original), ("Candidato seleccionado", alternative)):
+    with st.expander("Cómo se compararon las opciones", expanded=False):
+        for label, candidate in (("Primera opción recibida", original), ("Opción seleccionada", alternative)):
             if not candidate:
                 continue
             record = candidate.get("record") or {}
             name = record.get("name") or candidate.get("canonical_id") or label
-            st.text(f"{label}: {name} · {candidate.get('decision') or 'estado no informado'}.")
+            st.text(f"{label}: {name}. {_decision_label(candidate.get('decision'))}.")
             factors = candidate.get("ranking_factors") or {}
             if factors:
-                st.text("Factores: " + ", ".join(f"{_factor_label(key)} {value}" for key, value in factors.items()) + ".")
+                for key in ("settlement_days", "published_fund_fees", "observed_spread", "verified_diversification", "risk_fit"):
+                    if key in factors:
+                        value = factors[key]
+                        shown = "sin datos comparables" if value is None else ("sí" if value is True else "no" if value is False else _number_fmt(value))
+                        st.text(f"{_factor_label(key)}: {shown}.")
             for evidence in record.get("evidence", [])[:2]:
                 if not isinstance(evidence, dict):
                     continue
@@ -301,18 +327,33 @@ def _render_comparison(category_research):
 
 def _factor_label(value):
     return {"riesgo": "riesgo", "operacion": "operación", "diversificacion": "diversificación",
-            "costos": "costos", "familiaridad": "familiaridad"}.get(value, value.replace("_", " "))
+            "costos": "costos", "familiaridad": "familiaridad",
+            "settlement_days": "Días hábiles informados para recibir dinero o títulos",
+            "published_fund_fees": "Gastos anuales publicados del fondo (%)",
+            "observed_spread": "Diferencia observada entre precios de compra y venta (%)",
+            "verified_diversification": "Reparto de inversiones comprobado",
+            "risk_fit": "Medida comparable del riesgo total"}.get(value, value.replace("_", " "))
+
+
+def _decision_label(value):
+    return {"CONSERVAR_CANDIDATO": "Pasó los controles",
+            "PROPONER_ALTERNATIVA_COMPATIBLE": "Se eligió otra opción que pasó los controles",
+            "EXCLUIR": "No cumple una de las reglas",
+            "EXCLUIR_CANDIDATO": "Se descartó según las reglas",
+            "INFORMACION_INSUFICIENTE": "Faltan datos para decidir",
+            "REQUIERE_REVISION": "Hay datos que necesitan revisión",
+            "AMPLIAR_BUSQUEDA": "Se necesitan más opciones o datos"}.get(value, "No se informó una decisión")
 
 
 def _render_sources_and_limits(saved, research):
     with st.expander("Fuentes, actualización y detalle de la investigación", expanded=False):
-        st.caption(f"Consulta: {fecha_fmt(saved.get('consultado_en'))} · versión de política {research.get('policy_version')} · universo {research.get('universe_version')}.")
+        st.caption(f"Consultado el {fecha_fmt(saved.get('consultado_en'))}. Las versiones identifican qué reglas y lista de referencia se usaron: {research.get('policy_version')} / {research.get('universe_version')}.")
         for coverage in research.get("source_coverage", []):
             if not isinstance(coverage, dict):
                 continue
             source_name = coverage.get("source") or "Fuente consultada"
-            st.text(f"Cobertura de {source_name}: {coverage.get('candidate_count', 0)} candidatos · "
-                    f"clases {', '.join(coverage.get('classes') or []) or 'no informadas'}.")
+            st.text(f"En {source_name} se recibieron {coverage.get('candidate_count', 0)} registros de opciones para revisar. "
+                    f"Tipos: {', '.join(_type_label(kind) for kind in coverage.get('classes') or []) or 'no informados'}.")
             url = _https_url(coverage.get("url"))
             if url:
                 st.link_button("Consultar fuente de cobertura", url)
@@ -338,7 +379,9 @@ def _render_sources_and_limits(saved, research):
                     st.text(str(evidence.get("source") or record.get("name") or "Fuente del candidato seleccionado"))
                     st.link_button("Ver fuente del candidato", url)
                     st.caption(f"Observada: {fecha_fmt(evidence.get('observed_at')) if evidence.get('observed_at') else 'fecha no informada'} · contenido {evidence.get('data_date') or 'sin fecha'}")
-        st.json(research, expanded=False)
+        with st.expander("Datos técnicos completos (JSON)", expanded=False):
+            st.caption("Este formato guarda todos los datos de la consulta. No necesitás leerlo para usar la app.")
+            st.json(research, expanded=False)
 
 
 def _render_legacy_source_diagnostics(saved):
@@ -404,12 +447,12 @@ def _what_is(record):
     }
     if record.get("canonical_id") in explanations:
         return explanations[record["canonical_id"]]
-    return {"FCI": "Un fondo común reúne aportes y los administra en una cartera; la composición concreta de este fondo debe verificarse.",
-            "ETF": "Una canasta de activos cuyas participaciones cotizan en un mercado. Sus unidades y precio son propios.",
-            "CEDEAR": "Un certificado argentino que representa un activo del exterior. Tiene unidades y condiciones propias.",
-            "ADR": "Un certificado que representa acciones en otro mercado; la relación con la acción original debe verificarse.",
-            "LOCAL_SHARE": "Una participación en una empresa negociada en el mercado local.",
-            "FOREIGN_SHARE": "Una participación en una empresa negociada en un mercado del exterior.",
+    return {"FCI": "Este fondo reúne dinero de muchas personas y lo invierte según sus reglas. Al participar, tenés una parte del fondo. Su valor puede subir o bajar; abajo podés ver las inversiones que publicó.",
+            "ETF": "Es un fondo que se compra y vende en bolsa, como una acción. Reúne una canasta de inversiones cuyo valor puede subir o bajar.",
+            "CEDEAR": "Es un certificado que se negocia en Argentina y representa un activo del exterior. Tiene su propio precio y unidad; su valor puede subir o bajar.",
+            "ADR": "Es un certificado que representa acciones de una empresa en otro mercado. Sus unidades y precio pueden ser distintos de los de la acción original.",
+            "LOCAL_SHARE": "Es una pequeña participación en una empresa que se compra y vende en Argentina. Su valor puede subir o bajar.",
+            "FOREIGN_SHARE": "Es una pequeña participación en una empresa que se compra y vende en un mercado del exterior. Su valor puede subir o bajar.",
             "CRYPTO": "Un activo digital nativo de la red Bitcoin.",
             "CRYPTO_FUND": "Un fondo cotizado con exposición a Bitcoin; es distinto de tener el activo digital directamente."}.get(
                 record.get("instrument_type"), "No hay información suficiente para explicar este vehículo.")
@@ -438,21 +481,21 @@ def _join_reasons(reasons):
 
 
 def _field_label(value):
-    labels = {"quotation_currency": "moneda de cotización", "subscription_currency": "moneda de suscripción",
-              "economic_currency": "moneda de exposición económica", "minimum": "inversión mínima",
-              "lot_size": "lote", "unit_price": "precio unitario", "costs": "costos y comisiones",
+    labels = {"quotation_currency": "moneda en la que se informa el precio", "subscription_currency": "moneda aceptada para ingresar dinero",
+              "economic_currency": "moneda de las inversiones que hay detrás", "minimum": "monto mínimo para empezar",
+              "lot_size": "cantidad mínima de unidades", "unit_price": "precio por unidad", "costs": "costos y comisiones",
               "broker_fee": "comisión del intermediario",
-              "settlement_days": "plazo de liquidación", "liquidity": "liquidez", "access": "acceso",
-              "holdings": "composición de la cartera", "category_or_exposure": "categoría o exposición",
+              "settlement_days": "días para recibir el dinero o los títulos", "liquidity": "condiciones para disponer del dinero", "access": "acceso para operar",
+              "holdings": "lista de inversiones del fondo", "category_or_exposure": "tipo de inversión y qué activos tiene",
               "availability": "disponibilidad operativa", "access_authorization": "habilitación del acceso",
               "actual_exposure_or_holdings": "composición y exposición actuales",
               "broker": "intermediario", "broker_fees": "comisiones y gastos del intermediario",
-              "cash_subscription_route": "canal y moneda de fondeo", "account_authorization": "habilitación de la cuenta",
+              "cash_subscription_route": "cómo y con qué moneda ingresar dinero", "account_authorization": "habilitación de la cuenta",
               "final_execution_price": "precio final de la orden", "order_quantity": "cantidad operable",
               "broker_settlement_confirmation": "plazos y horarios de acreditación",
-              "broker_subscription_currency": "moneda aceptada al suscribir", "broker_redemption_channel": "canal y horarios de rescate",
-              "fund_open": "fondo abierto", "subscription_open": "suscripción de la clase habilitada",
-              "redemption_open": "rescate de la clase habilitado", "qualified_only": "restricción para inversores calificados",
+              "broker_subscription_currency": "moneda aceptada para ingresar dinero", "broker_redemption_channel": "cómo y a qué hora pedir retirar el dinero",
+              "fund_open": "si el fondo está abierto", "subscription_open": "si permite nuevos ingresos de dinero",
+              "redemption_open": "si permite pedir retiros", "qualified_only": "si está reservado a inversores con requisitos especiales",
               "horizon": "horizonte publicado", "duration": "duración publicada de los activos",
               "category": "clasificación", "exposure": "exposición", "holdings_date": "fecha de composición",
               "holdings_details": "composición publicada", "documented_market_unit_rule": "unidad mínima de negociación respaldada",

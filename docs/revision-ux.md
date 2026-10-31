@@ -1,23 +1,25 @@
 # Revisión de experiencia de uso
 
-La implementación final de interfaz se rehízo con GPT-6.1-sol y razonamiento bajo, siguiendo la preferencia del usuario: conservar el atractivo de la primera versión de NEXUS y acompañar a una persona sin conocimientos financieros.
+Este documento registra una revisión anterior de la interfaz: qué cambió y qué se comprobó en ese momento. No es un tutorial de inversiones ni una certificación de accesibilidad o de idoneidad financiera.
+
+El trabajo buscó conservar el aspecto de NEXUS y hacer que los pasos y preguntas fueran comprensibles para personas sin experiencia financiera.
 
 ## Cambios
 
-- Inicio con gradientes violeta/cian, tarjetas de recorrido adaptables y una acción principal.
-- Cuatro etapas: perfil, escenario, revisión y resultado. La navegación identifica avance y permite volver.
-- Preguntas cotidianas y ejemplos monetarios para interpretar tolerancia y liquidez.
-- Cuatro escenarios ficticios opcionales, con señales manuales editables.
-- Respuestas guardadas y borradores separados, restaurados al navegar y descartables.
-- Ejecución única en revisión; las entradas se copian junto a la evaluación para evitar confundir resultados anteriores con datos nuevos.
-- Resultado con resumen compacto, tabla semántica, barras de distribución y explicación de la clasificación.
-- Auditoría y JSON como detalle adicional. No se afirma que la traza incluya cada ajuste porcentual.
+- Inicio con colores violeta y cian, tarjetas adaptables y una acción principal.
+- Cuatro pasos: perfil, escenario, revisión y resultado. La navegación muestra el avance y permite volver.
+- Preguntas cotidianas y ejemplos de dinero para explicar tolerancia y liquidez.
+- Cuatro escenarios ficticios opcionales que se pueden editar.
+- Respuestas guardadas y borradores separados, que se restauran al navegar y se pueden descartar.
+- Un cálculo desde la pantalla de revisión. Las respuestas usadas se guardan junto al resultado para distinguirlo de cálculos posteriores.
+- Resultado con resumen, tabla, barras y explicación del perfil.
+- Auditoría y archivo JSON disponibles como detalle. La traza no necesariamente muestra cada ajuste porcentual.
 
 ## Verificación realizada
 
-- Nueve pruebas automáticas: recorrido, valores guardados y borradores, errores, confirmación del escenario, resultados desactualizados, recálculo, descarte de cambios, auditoría y presets.
-- Diez casos de referencia del motor, evaluados dos veces para comprobar determinismo; la aprobación financiera del docente o asesor continúa pendiente.
-- Código del motor, servicio, validaciones y cartera idéntico al anterior a la mejora de UX.
+- Nueve pruebas automáticas de recorrido, respuestas guardadas, errores, confirmación del escenario, resultados anteriores, recálculo, descarte de cambios, auditoría y escenarios de ejemplo.
+- Diez casos de referencia, calculados dos veces para comprobar que las mismas entradas den el mismo resultado. La revisión experta de los porcentajes sigue pendiente.
+- En esa revisión, no se modificaron las reglas de cálculo, las validaciones ni la construcción de la cartera.
 - Recorrido real en navegador desde las acciones del contenido, usando un importe ficticio y un escenario de ejemplo.
 - Anchos de 375, 768, 1024 y 1440 px: sin desplazamiento horizontal de la página en las mediciones del resultado. También se inspeccionó el panel habitual de aproximadamente 890 px.
 - Foco visible de 3 px y navegación con Tab. Contraste de los pares principales medido por encima de 4,5:1.
@@ -25,8 +27,8 @@ La implementación final de interfaz se rehízo con GPT-6.1-sol y razonamiento b
 
 ## Límites de la comprobación
 
-Esto no constituye una certificación de accesibilidad. Quedan para revisión manual el lector de pantalla, zoom y el foco automático del resumen de errores; la implementación mantiene controles nativos y errores junto a los campos, sin scripts que manipulen el documento padre. La regla de movimiento reducido se comprobó en el CSS.
+Estas comprobaciones no certifican accesibilidad. Quedaron pendientes la revisión con lector de pantalla, el zoom y el enfoque automático del resumen de errores. La preferencia de movimiento reducido se comprobó en los estilos de la interfaz.
 
-Las pruebas verifican la disponibilidad de las exportaciones y que las vistas reutilizan la misma evaluación. El observador de descargas del navegador no devolvió un evento al probar el JSON; no se confirmó la escritura del archivo descargado mediante esa herramienta.
+Las pruebas comprobaron que la descarga estuviera disponible y que las vistas usaran el mismo resultado. La herramienta usada no confirmó que el archivo JSON se hubiera guardado en el dispositivo.
 
 Las diferencias funcionales con el brief y los casos para revisión experta se detallan en `validacion-brief.md` y `casos-brief.json`.

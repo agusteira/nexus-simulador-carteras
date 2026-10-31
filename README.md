@@ -1,58 +1,66 @@
-# NEXUS: cómo funciona el sistema experto
+# NEXUS: qué decide y cómo lo hace
 
-NEXUS es un prototipo educativo que transforma un perfil y un escenario ingresados por la persona en una **distribución porcentual ilustrativa**. Luego investiga instrumentos que podrían corresponder a cada categoría y explica qué hechos y reglas sostienen la selección.
+NEXUS es un prototipo educativo que usa **reglas escritas por personas** para convertir tus respuestas en una distribución porcentual ilustrativa. Después busca instrumentos que podrían corresponder a cada categoría y muestra los datos usados.
 
-El sistema combina datos y reglas explícitas. **No usa un modelo de lenguaje, aprendizaje automático ni un optimizador de rentabilidad.** La primera etapa usa [Experta](https://github.com/nilp0inter/experta) para inferir perfil y régimen; la distribución la calcula un módulo Python. La selección de instrumentos es otra etapa determinística en Python y depende de fuentes públicas con evidencia vigente. Son dos decisiones distintas: obtener porcentajes no garantiza que haya datos suficientes para seleccionar un instrumento.
+Primero calcula porcentajes; luego evalúa instrumentos. Puede producir una cartera porcentual aunque no encuentre datos suficientes para recomendar instrumentos. No calcula rendimientos futuros ni optimiza ganancias.
 
-> NEXUS es una demostración académica con revisión experta pendiente. No genera órdenes, no consulta un broker ni verifica que una cuenta pueda operar un instrumento. Los datos de mercado pueden estar demorados o incompletos; las selecciones no son una validación profesional de idoneidad.
+NEXUS no analiza balances de empresas ni valuaciones, ni intenta anticipar qué empresa rendirá mejor. Selecciona instrumentos por compatibilidad con las reglas y los datos disponibles.
+
+> La revisión experta de las reglas está pendiente. NEXUS no genera órdenes ni consulta a tu intermediario. No comprueba si tu cuenta puede operar un instrumento. Los datos pueden estar demorados o incompletos.
+
+## Qué significan estos términos
+
+- **Perfil:** clasificación que se obtiene de tu tolerancia a una caída.
+- **Cartera:** distribución del capital entre grupos, como renta fija o liquidez. Los porcentajes no son cantidades de instrumentos.
+- **Horizonte:** cuánto tiempo pensás mantener la inversión.
+- **Liquidez:** porción que querés dejar en el grupo de dinero disponible según la simulación.
+- **Renta variable:** acciones y fondos cuyo valor puede cambiar con el mercado.
+- **Matriz:** tabla que indica cómo repartir el capital para cada perfil.
+- **Escenario:** señales manuales que describen el contexto supuesto, como presión cambiaria. No son un pronóstico.
+
+Para más términos cotidianos, consultá el [glosario](docs/glosario.md).
+
+## Cómo usarlo
+
+1. Indicá tolerancia, capital, horizonte, objetivo y liquidez mínima.
+2. Confirmá el escenario manual y revisá las respuestas.
+3. Ejecutá la evaluación para ver porcentajes y, cuando haya evidencia suficiente, instrumentos seleccionados.
+4. Revisá los motivos, pendientes y fuentes. La investigación de instrumentos se puede actualizar sin recalcular los porcentajes.
+
+La confirmación del escenario es manual: NEXUS no verifica con indicadores reales que el mercado esté actualizado.
 
 ## El flujo en dos etapas
 
 ```mermaid
 flowchart LR
-    I[Entradas de la persona] --> V[Validación]
-    V --> H[Hechos y reglas de Experta<br/>perfil y régimen]
-    H --> P[Construcción de cartera<br/>Python + matriz versionada]
-    P --> F[Investigación de instrumentos<br/>hechos públicos con evidencia]
-    F --> R[Reglas de elegibilidad y comparación<br/>Python determinístico]
-    R --> O[Resultado, auditoría e historial]
-    P --> O
+    I[Tus respuestas] --> V[Controles de entrada]
+    V --> P[Cuánto destinar a cada grupo]
+    P --> R[Qué opciones cumplen]
+    R --> O[Explicaciones y fuentes]
 ```
 
-1. **Asignación:** Experta infiere un perfil y un régimen a partir de las entradas. Python aplica la matriz, límites y controles de suma para producir porcentajes.
-2. **Selección:** Python recopila registros públicos, comprueba sus hechos y aplica exclusiones y reglas de comparación. Esta etapa puede terminar sin candidato elegible, aunque la distribución porcentual sea válida.
+1. **Reparto:** la tolerancia determina el perfil. La tabla de reparto, el tiempo previsto, el objetivo y la liquidez fijan los porcentajes.
+2. **Opciones:** el sistema revisa datos publicados para ver qué instrumentos cumplen. Puede no mostrar una opción si los datos no alcanzan.
 
 La investigación no vuelve a calcular la cartera. Actualizar una investigación tampoco ejecuta de nuevo el motor de asignación.
 
-### De respuestas a hechos y reglas
+## Cómo pasa de tus respuestas a una cartera
 
-Experta mantiene una memoria de trabajo con hechos tipados. Al iniciar una evaluación, el servicio reinicia el motor, declara `Inversor` y `Mercado`, y `@DefFacts` incorpora `Parametros` con los umbrales de la matriz activa. Las reglas `@Rule` cotejan esos hechos; si una coincide, puede declarar un nuevo hecho como `Perfil` o `Regimen` y agregar una entrada a la auditoría.
-
-Por ejemplo, con tolerancia 10, los parámetros `conservador_max=0` y `moderado_max=10` permiten que coincida esta regla:
-
-```text
-SI conservador_max < tolerancia <= moderado_max
-ENTONCES declarar Perfil(nombre="MODERADO")
-         registrar R_PERFIL_02 en la auditoría
-```
-
-El servicio llama a `run()`, que aplica encadenamiento hacia adelante: busca reglas cuyas condiciones ya coinciden con hechos y ejecuta sus acciones. Las reglas de perfil y régimen leen directamente los hechos de entrada; no se disparan una a otra en una cascada. Después, el servicio recoge los hechos `Perfil` y `Regimen` y se los pasa al módulo de cartera. La tolerancia determina el perfil; capital, horizonte y objetivo no lo cambian y se usan en la validación y los ajustes posteriores de la cartera.
-
-La prioridad `salience` de Experta ordena activaciones de reglas. Es distinta de `prioridad_regimen` en la matriz, que decide cuál señal de escenario prevalece si hay varias. Esta prioridad configurable no altera el orden de evaluación del perfil.
+En la práctica, la tolerancia decide el perfil. Capital convierte porcentajes en montos; horizonte, objetivo y liquidez aplican límites después. El ejemplo completo y reproducible está más abajo.
 
 ## Entradas y efecto
 
 | Entrada | Qué cambia |
 | --- | --- |
 | Tolerancia a una caída | Elige el perfil según los umbrales de la matriz. En v1: 0% conservador; mayor que 0% y hasta 10% moderado; mayor que 10% agresivo. También puede excluir instrumentos incompatibles con el perfil. |
-| Capital y moneda | El capital se convierte a montos por categoría. La selección comprueba mínimos publicados y compatibilidad de la moneda de la clase o cotización; no calcula unidades para comprar ni confirma la moneda de fondeo del intermediario. |
+| Capital y moneda | El capital se convierte a montos por categoría. La selección compara los mínimos y la moneda indicada para el instrumento con la moneda simulada. No calcula unidades para comprar ni comprueba qué moneda acepta tu intermediario para pagar. |
 | Horizonte | Afecta límites de renta variable y la compatibilidad de horizonte y duración de los FCI. |
 | Objetivo | Preservación limita renta variable al 10%; Crecimiento y Renta no tienen ese tope en la política vigente. |
 | Liquidez mínima | Fija el mínimo que debe quedar en Liquidez inmediata. Si hace falta, la cartera retira puntos de otras categorías según el orden de la matriz. |
-| Señales de escenario | Inflación, presión cambiaria y volatilidad se ingresan manualmente. Si no se marca ninguna, el régimen es Estable. Si hay más de una, v1 elige un solo régimen según la prioridad configurable: volatilidad, inflación, presión cambiaria. |
-| Confirmación del escenario | `mercado_actualizado` es el nombre de una confirmación manual de la demo. No consulta precios, fechas ni indicadores para comprobar que el escenario esté actualizado. |
+| Señales de escenario | Inflación, presión cambiaria y volatilidad se ingresan manualmente. Si no se marca ninguna, se toma el escenario estable. Si hay varias, se aplica el orden vigente: volatilidad, inflación y presión cambiaria. |
+| Confirmación del escenario | Confirmás manualmente el escenario de la demostración. NEXUS no consulta precios, fechas ni indicadores para comprobar que esté actualizado. |
 
-La validación rechaza capital u horizonte no positivos, tolerancia o liquidez fuera de 0–100, la falta de confirmación manual y la combinación de tolerancia 0% con objetivo Crecimiento. También puede derivar un caso si faltan hechos inferidos o si las reglas no logran una cartera válida.
+Antes de calcular, la aplicación revisa que el capital y el tiempo sean mayores que cero, que tolerancia y liquidez estén entre 0% y 100%, que hayas confirmado el escenario y que las respuestas sean compatibles. Si no puede obtener un perfil o un reparto válido, explica que el caso necesita revisión.
 
 ## Matriz de asignación: versión 1
 
@@ -77,7 +85,7 @@ La versión vigente de la política agrega topes de renta variable después de l
 En cada evaluación, las operaciones se aplican en este orden:
 
 1. Copiar la cartera base del perfil.
-2. Aplicar el ajuste del régimen inferido: inflación mueve 10 puntos de liquidez a renta fija inflación; presión cambiaria mueve 10 puntos de liquidez a renta fija cambiaria; volatilidad mueve de renta variable a liquidez hasta todos los puntos disponibles. La prioridad selecciona un solo régimen.
+2. Aplicar el ajuste del escenario elegido: inflación mueve 10 puntos de liquidez a renta fija inflación; presión cambiaria mueve 10 puntos de liquidez a renta fija cambiaria; volatilidad mueve de renta variable a liquidez hasta todos los puntos disponibles. Si hay varias señales, se aplica una sola según su prioridad.
 3. Aplicar los topes de la matriz por perfil; cualquier excedente pasa a liquidez inmediata.
 4. Aplicar el tope de renta variable por horizonte y objetivo; el excedente pasa a liquidez.
 5. Elevar Liquidez inmediata al mínimo indicado, retirando puntos en el orden configurado.
@@ -102,25 +110,18 @@ Supongamos un capital de **ARS 10.000**, horizonte de **24 meses**, objetivo **P
 
 Los montos son porcentajes del capital ingresado. No son cantidades de instrumentos ni una predicción de resultados.
 
-### Versiones de reglas y de conocimiento
+## Versiones de la tabla de reparto
 
-La matriz se puede cambiar desde **Más opciones → Administración de matrices**. Guardar una edición o restaurar una versión crea una versión nueva; no sobrescribe las anteriores. Cada evaluación registra la versión que usó. Esto cambia las reglas de asignación futuras, no reescribe resultados guardados.
-
-[`nexus/instrument_knowledge.py`](nexus/instrument_knowledge.py) contiene `KnowledgeStore`, que conserva fichas y evidencia de instrumentos con versiones e historial de señales. Ese almacén es independiente de la matriz de cartera: las señales no entrenan modelos, no cambian reglas y no validan una ficha por sí solas.
+La tabla se puede cambiar desde **Más opciones → Administración de matrices**. Guardar una edición o restaurar una versión crea una versión nueva; no reemplaza las anteriores. Cada evaluación registra qué versión usó. Un cambio afecta evaluaciones futuras y no altera resultados guardados.
 
 ## Cómo se seleccionan los instrumentos
 
-La matriz de cartera es una decisión versionada en [`config/matriz_decision.json`](config/matriz_decision.json). La política de selección actual es `argentina-4`, en [`config/instrument_policy.json`](config/instrument_policy.json). Las reglas ejecutables están en Python; la lista `ranking_order` del JSON no configura por sí sola el comparador.
+La selección usa hechos publicados para filtrar candidatos y comparar los que pasan las reglas. Si los datos no alcanzan, puede no haber selección. El intermediario y los costos de ejecutar una orden quedan pendientes de confirmar. Las fichas y fechas se explican en [investigación de instrumentos](docs/instrument-research.md); los umbrales están en la [política de recomendación](docs/instrument-policy.md).
 
-El alcance actual es `ARGENTINA_SIN_BROKER`: FCI argentinos y valores BYMA de tipos admitidos. El proceso:
+La selección revisa si la información permite comparar instrumentos y si cada uno cumple las condiciones de su grupo. Puede dejar un grupo sin opción. Si muestra una alternativa, usa el mismo presupuesto de ese grupo; no suma una segunda inversión a la cartera. La descripción sencilla de filtros y fuentes está en [política](docs/instrument-policy.md) e [investigación](docs/instrument-research.md).
 
-1. Reúne el universo de fuentes y completa las consultas dentro de límites de tiempo y cantidad.
-2. Conserva los hechos faltantes como desconocidos y comprueba evidencia, fechas, moneda, mínimos, plazo y exposición.
-3. Excluye candidatos que incumplen una regla; los datos contradictorios o inválidos requieren revisión.
-4. Compara solo candidatos elegibles. Los hechos no comparables no se rellenan con cero. No se favorece un ticker, una marca ni una señal de familiaridad.
-5. Conserva hasta dos opciones bajo el **mismo presupuesto de categoría**. La segunda es una alternativa y no una segunda posición añadida a la cartera.
-
-En la implementación vigente, primero cuentan factores comunes —plazo publicado cuando está disponible y diversificación comprobada—. Dentro de FCI se comparan gastos anuales publicados y patrimonio de clase; dentro de valores BYMA se comparan spread y presencia observada. Entre tipos distintos se usan solo factores comunes y un desempate estable por identidad canónica. Riesgo comparable y familiaridad no están disponibles como factores de ranking en las fuentes inspeccionadas.
+<details>
+<summary>Datos y estados técnicos de la selección</summary>
 
 ### Hechos, fechas y límites
 
@@ -149,7 +150,9 @@ La asignación y la selección tienen estados distintos:
 | `EXCLUIR` | El candidato incumple una regla del alcance de recomendación del instrumento. |
 | `EXCLUIR_CANDIDATO` | Descartado por reglas del modo estricto o por duplicación de subyacente; el alcance actual también registra `EXCLUIR`. |
 
-No se promete que todas las categorías terminen con una selección.
+No todas las categorías necesariamente terminan con una opción.
+
+</details>
 
 ## Auditoría, JSON e historial
 
@@ -159,7 +162,34 @@ La investigación de instrumentos se guarda como una revisión separada. Actuali
 
 El historial y las revisiones usan SQLite en el servidor bajo `data/` o `NEXUS_DATA_DIR`. El identificador de usuario sirve para filtrar el historial, no autentica a la persona ni aísla sus datos.
 
-## Mapa del código
+<details>
+<summary>Para quien quiera ver el código</summary>
+
+## Detalles de implementación
+
+NEXUS no usa un modelo de lenguaje ni aprendizaje automático. La asignación usa Experta para inferir perfil y régimen, y Python aplica la matriz. La selección de instrumentos es un módulo Python determinístico separado. El detalle de hechos, reglas y prioridades se encuentra en [`nexus/engine.py`](nexus/engine.py); las reglas de instrumentos, en [`nexus/instrument_recommendations.py`](nexus/instrument_recommendations.py).
+
+Experta mantiene una memoria de trabajo de hechos tipados. Al iniciar una evaluación, el servicio reinicia el motor, declara `Inversor` y `Mercado`, y `@DefFacts` incorpora `Parametros` con los umbrales de la matriz activa. Las reglas `@Rule` cotejan esos hechos; al coincidir, pueden declarar `Perfil` o `Regimen` y agregar una entrada a la auditoría.
+
+Por ejemplo, con tolerancia 10, `conservador_max=0` y `moderado_max=10` permiten que coincida esta regla:
+
+```text
+SI conservador_max < tolerancia <= moderado_max
+ENTONCES declarar Perfil(nombre="MODERADO")
+         registrar R_PERFIL_02 en la auditoría
+```
+
+El servicio llama a `run()`, que aplica encadenamiento hacia adelante: coteja las condiciones con los hechos presentes y ejecuta las acciones correspondientes. Las reglas de perfil y régimen leen directamente los hechos de entrada; no se disparan una a otra en cascada. El servicio recoge los hechos `Perfil` y `Regimen` y se los pasa al módulo de cartera. La tolerancia determina el perfil; capital, horizonte y objetivo se usan después en la validación y los ajustes de cartera.
+
+`salience` ordena activaciones de reglas Experta. `prioridad_regimen` es un ajuste distinto de la matriz que elige una señal de escenario cuando hay varias; no cambia el orden de evaluación del perfil.
+
+El campo `mercado_actualizado` guarda la confirmación manual del escenario. No verifica que los datos de mercado sean actuales.
+
+La matriz se guarda en [`config/matriz_decision.json`](config/matriz_decision.json); la política vigente es `argentina-4` en [`config/instrument_policy.json`](config/instrument_policy.json). El campo `ranking_order` no configura por sí solo el comparador. El alcance técnico se llama `ARGENTINA_SIN_BROKER`.
+
+[`nexus/instrument_knowledge.py`](nexus/instrument_knowledge.py) contiene `KnowledgeStore`, que guarda fichas y evidencia versionadas e historial de señales. Es independiente de la matriz. Las señales no entrenan modelos, no cambian reglas ni validan fichas por sí solas.
+
+### Mapa del código
 
 | Archivo | Responsabilidad |
 | --- | --- |
@@ -175,6 +205,8 @@ El historial y las revisiones usan SQLite en el servidor bajo `data/` o `NEXUS_D
 | [`nexus/history.py`](nexus/history.py) | Persistencia de evaluaciones y revisiones SQLite. |
 | [`nexus/instrument_knowledge.py`](nexus/instrument_knowledge.py) | Versiones e historial de fichas, evidencia y feedback de instrumentos. |
 | [`docs/instrument-research.md`](docs/instrument-research.md), [`docs/instrument-policy.md`](docs/instrument-policy.md) | Alcance de fuentes, evidencia y reglas detalladas. |
+
+</details>
 
 ## Instalar, ejecutar y comprobar
 

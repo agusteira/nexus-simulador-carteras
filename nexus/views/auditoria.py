@@ -9,6 +9,8 @@ from ..ui.common import (
     moneda_fmt,
     objetivo_fmt,
     perfil_fmt,
+    estado_fmt,
+    decision_fmt,
 )
 
 
@@ -24,10 +26,10 @@ def _render_inputs(resultado, snapshot):
     st.write(f"**Capital de entrada:** {moneda_fmt(capital, currency)}")
     st.write(f"**Objetivo:** {objetivo_fmt(perfil.get('objetivo'))}")
     st.write(f"**Horizonte:** {perfil.get('horizonte', 'No disponible')} meses")
-    st.write(f"**Tolerancia hipotética:** {perfil.get('tolerancia', 'No disponible')}%")
-    st.write(f"**Liquidez mínima simulada:** {perfil.get('liquidez', 'No disponible')}%")
+    st.write(f"**Baja temporal explorada:** {perfil.get('tolerancia', 'No disponible')}% · No es un límite garantizado.")
+    st.write(f"**Porción que se quiso disponible:** {perfil.get('liquidez', 'No disponible')}% · No garantiza acceso inmediato.")
     inferred = resultado.get("perfil_riesgo")
-    st.write(f"**Perfil inferido:** {perfil_fmt(inferred) if inferred else 'No inferido'}")
+    st.write(f"**Perfil asignado por las reglas:** {perfil_fmt(inferred) if inferred else 'Sin asignar'}")
     st.write(
         f"**Escenario:** "
         f"{escenario_snapshot_fmt(escenario, resultado.get('regimen_mercado'))}"
@@ -44,18 +46,18 @@ def _render_inputs(resultado, snapshot):
     st.write("**Señales ingresadas:** " + (", ".join(señales) if señales else "Ninguna"))
     st.caption(
         "El escenario usado por el motor es manual y simulado. "
-        + ("La consulta independiente de ejemplos de fondos y su estado quedan registrados en el JSON."
+        + ("Las consultas a opciones publicadas y sus resultados quedan registrados en el archivo de datos (JSON)."
            if resultado.get("ejemplos_instrumentos") else "")
     )
     st.write(f"**Usuario:** {perfil.get('usuario_id') or 'anonimo'}")
     if resultado.get("version_matriz") is not None:
-        st.write(f"**Versión de la matriz de decisión:** v{resultado['version_matriz']}")
+        st.write(f"**Versión de las reglas:** v{resultado['version_matriz']}")
     st.caption(f"**Fecha de ejecución:** {fecha_fmt(resultado.get('fecha_ejecucion'))}")
 
 
 def render():
     st.markdown('<div class="eyebrow">AUDITORÍA</div>', unsafe_allow_html=True)
-    st.title("Trazabilidad de esta evaluación")
+    st.title("Qué datos y reglas se usaron")
     st.markdown(
         "Acá podés revisar qué perfil y escenario quedaron registrados, junto con "
         "las reglas que se dispararon o los errores de la ejecución."
@@ -74,16 +76,17 @@ def render():
             "corresponden a la ejecución anterior, no a los datos o borradores actuales."
         )
 
-    st.markdown(f"**Estado registrado:** `{resultado.get('estado', 'SIN_ESTADO')}`")
+    st.markdown(f"**Estado:** {estado_fmt(resultado.get('estado'))}")
+    st.caption("Esta página muestra qué datos de entrada quedaron guardados y qué motivos o reglas se registraron.")
     _render_inputs(resultado, st.session_state.get("snapshot_ejecucion") or {})
 
     if resultado.get("auditoria"):
         st.markdown("## Reglas registradas")
-        st.dataframe(resultado["auditoria"], width="stretch", hide_index=True)
         st.caption(
-            "La traza es parcial: registra la clasificación del perfil y del "
-            "escenario; no lista cada ajuste porcentual de la cartera."
+            "La traza es un registro de los pasos aplicados. Puede resumir la clasificación y el escenario sin detallar cada cambio porcentual."
         )
+        with st.expander("Ver detalle de las reglas registradas"):
+            st.dataframe(resultado["auditoria"], width="stretch", hide_index=True)
     elif resultado.get("errores"):
         st.markdown("## Resultado de la validación")
         st.dataframe(resultado["errores"], width="stretch", hide_index=True)
@@ -94,16 +97,20 @@ def render():
     research = research_snapshot.get("investigacion") or {}
     if research:
         st.markdown("## Investigación de instrumentos")
-        st.caption(f"Ejecución {research.get('execution_id')} · política {research.get('policy_version')} · universo {research.get('universe_version')} · revisión experta pendiente")
+        st.caption("La investigación compara opciones publicadas con las reglas de selección. La revisión experta sigue pendiente.")
         for category in research.get("categories", []):
-            st.write(f"**{category.get('category')} — {category.get('decision')}**")
-            st.write(category.get("reasons", []))
-            for candidate in category.get("evaluated", []):
-                record = candidate.get("record", {})
-                st.write({"instrumento": record.get("name") or candidate.get("canonical_id"),
-                          "decision": candidate.get("decision"), "rule_ids": candidate.get("rule_ids"),
-                          "missing_fields": candidate.get("missing_fields"),
-                          "evidence": record.get("evidence", [])})
+            st.write(f"**{category.get('category')} — {decision_fmt(category.get('decision'))}**")
+            reasons = category.get("reasons", [])
+            if reasons:
+                st.write("Motivos: " + " ".join(str(reason) for reason in reasons))
+            with st.expander(f"Datos técnicos: {category.get('category')}"):
+                st.caption(f"Ejecución {research.get('execution_id')} · reglas v{research.get('policy_version')} · universo v{research.get('universe_version')}")
+                for candidate in category.get("evaluated", []):
+                    record = candidate.get("record", {})
+                    st.write({"instrumento": record.get("name") or candidate.get("canonical_id"),
+                              "decision": candidate.get("decision"), "rule_ids": candidate.get("rule_ids"),
+                              "missing_fields": candidate.get("missing_fields"),
+                              "evidence": record.get("evidence", [])})
 
     with st.expander("Detalle técnico y JSON completo"):
         st.json(resultado)

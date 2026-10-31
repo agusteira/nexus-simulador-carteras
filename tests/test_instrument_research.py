@@ -331,7 +331,7 @@ class InstrumentResearchTests(unittest.TestCase):
             research = research_instruments(RESULT, SNAPSHOT, [], provider=False,
                 limits=ResearchLimits(0, 1, 6), today=date(2026, 10, 29))
         self.assertEqual(len(research["categories"]), 1)
-        self.assertTrue(any("almacenamiento local" in e for e in research["search"]["errors"]))
+        self.assertTrue(any("datos de investigación" in e for e in research["search"]["errors"]))
 
     def test_default_argentina_scope_does_not_select_curated_seed_without_required_facts(self):
         class FoundProvider(Provider):

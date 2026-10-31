@@ -1,6 +1,31 @@
-# Investigación educativa de instrumentos
+# Investigación de instrumentos: de dónde salen los datos
 
-La investigación de instrumentos es una capa educativa y de solo lectura sobre la simulación de cartera. No modifica asignaciones, no calcula cantidades ni rendimientos futuros, y no convierte una señal de familiaridad en una recomendación.
+Después de calcular los porcentajes, NEXUS busca opciones para cada grupo de la cartera. Esta búsqueda no cambia el reparto ni calcula cuántos instrumentos comprarías. Si un dato necesario no aparece, se conserva como desconocido; no se interpreta como cero ni se completa por intuición.
+
+### Busca opciones
+
+NEXUS consulta listas y datos públicos de fondos y valores. CAFCI aporta información publicada por fondos, como su clase, patrimonio y composición. BYMADATA muestra ofertas y cantidades observadas en el mercado. La búsqueda puede ser limitada y no representa todo lo que existe.
+
+### Comprueba los datos
+
+El sistema revisa si los datos corresponden al instrumento y siguen dentro del plazo que acepta la regla. Una composición de fondo incluye la fecha en que se publicó. Puede describir una cartera pasada, aunque sea reciente; no confirma las tenencias de hoy. Una cotización observada puede tener demora y no es una operación realizada.
+
+### Muestra qué puede sostener
+
+Si los datos cumplen las condiciones, NEXUS puede mostrar una opción y explicar qué hechos la respaldan. Si falta un dato necesario, lo deja sin confirmar. Un valor desconocido no equivale a cero; por ejemplo, un costo no publicado no significa que sea gratis. Una identidad conocida tampoco demuestra que el fondo invierta hoy en un activo determinado.
+
+Hasta dos opciones de un mismo grupo usan el mismo monto de la cartera. La segunda es una alternativa para ese monto, no una inversión adicional. Las fuentes no confirman si tu intermediario ofrece el instrumento ni si una orden se puede ejecutar.
+
+### Guarda esta consulta
+
+Cada consulta guarda lo que se buscó, qué fuente respondió, las fechas, las decisiones y los límites de búsqueda. Actualizar la consulta crea una revisión nueva y deja intactos los porcentajes y el resultado anterior. La política completa y el [glosario](glosario.md) explican términos como FCI, cuotaparte, liquidez y CEDEAR.
+
+La comprobación de cobertura que sigue corresponde al **30/10/2026**; los conteos son de esa revisión y no describen el estado actual de las fuentes.
+
+<details>
+<summary>Cobertura, contratos y persistencia técnica</summary>
+
+## Flujo técnico y límites
 
 ## Flujo
 
@@ -53,3 +78,5 @@ La comprobación de los adaptadores de identidad puede repetirse con `python scr
 `instrument_knowledge.db` contiene fichas con versiones por identidad y eventos de feedback separados. Restaurar una ficha crea una versión nueva. Las correcciones marcan revisión y se conservan al volver a consultar; no pueden promover elegibilidad. El perfil personal no se almacena en esa base.
 
 `historial.db` agrega la tabla `revisiones_investigacion`; la creación es aditiva y conserva las evaluaciones existentes. La inserción valida tanto las entradas como el hash del resultado de esa evaluación. La descarga desde sesión o historial incluye revisiones previas, sin modificar los porcentajes ni las entradas originales. Para conservar estos datos al reiniciar el hosting se necesita un `NEXUS_DATA_DIR` persistente.
+
+</details>

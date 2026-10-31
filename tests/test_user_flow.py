@@ -242,7 +242,7 @@ class UserFlowTest(unittest.TestCase):
         self.source_mock.side_effect = [MarketDataError("Fixture offline: sin conexión"), good]
         self.fill_profile()
         self.evaluate()
-        self.assertTrue(any("No hay un instrumento seleccionado" in item.value for item in self.app.warning))
+        self.assertTrue(any("No pudimos elegir una opción" in item.value for item in self.app.warning))
         # Reference research remains inspectable when the FCI catalog fails;
         # source-specific examples must not claim that funds were retrieved.
         saved = self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]
@@ -253,7 +253,7 @@ class UserFlowTest(unittest.TestCase):
         self.assertEqual(len([b for b in self.app.button if "Actualizar investigación" in b.label]), 1)
         self.click("Actualizar investigación")
         self.assertEqual(self.source_mock.call_count, 2)
-        self.assertTrue(any("No hay un instrumento seleccionado" in item.value for item in self.app.warning))
+        self.assertTrue(any("No pudimos elegir una opción" in item.value for item in self.app.warning))
         self.assertTrue(self.app.session_state["resultado_robo"]["ejemplos_instrumentos"]["fuentes"])
 
     def test_legacy_fci_alternatives_are_not_rendered_as_investigated_cards(self):
@@ -309,7 +309,7 @@ class UserFlowTest(unittest.TestCase):
         self.navigate("auditoria")
         self.navigate("resultado")
         self.assertEqual(self.source_mock.call_count, 1)
-        self.assertTrue(any("consulta usa un alcance anterior" in item.value for item in self.app.info))
+        self.assertTrue(any("consulta se guardó con una versión anterior" in item.value for item in self.app.info))
         self.assert_clean()
 
     def test_example_scenarios_update_draft_and_evaluation(self):

@@ -171,7 +171,7 @@ class RecommendationContractTests(unittest.TestCase):
         self.assertLess(outputs[0].index(cheaper["canonical_id"]), outputs[0].index(expensive["canonical_id"]))
         choice = recommendation_decide_category(candidates, CONTEXT, original_id=expensive["canonical_id"], today=TODAY)
         self.assertEqual(choice["decision"], "PROPONER_ALTERNATIVA_COMPATIBLE")
-        self.assertIn("gasto anual de fondo publicado", choice["comparison"]["reason"])
+        self.assertIn("gastos anuales publicados", choice["comparison"]["reason"])
 
     def test_budget_change_excludes_candidate_below_published_minimum(self):
         candidate = complete_fci("AR:FCI:XYZ:1", minimum=1500)
@@ -206,11 +206,11 @@ class RecommendationContractTests(unittest.TestCase):
         self.assertEqual(result["record"]["raw_fees"]["administracion_gerente"], "0.5")
         self.assertEqual(result["ranking_factors"]["published_fund_fees"], 0.75)
         self.assertFalse(any("gastos anuales" in warning for warning in result["selection_warnings"]))
-        self.assertTrue(any("Gastos anuales" in item and "0.75%" in item
+        self.assertTrue(any("gastos anuales" in item.casefold() and "0.75%" in item
                             for item in result["selection_explanation"]))
-        self.assertTrue(any("Mínimo publicado" in item and "presupuesto simulado" in item
+        self.assertTrue(any("mínimo publicado" in item.casefold() and "presupuesto simulado" in item
                             for item in result["selection_explanation"]))
-        self.assertTrue(any("Horizonte CAFCI" in item and "T+1" in item
+        self.assertTrue(any("sugiere mantener" in item.casefold() and "T+1" in item
                             for item in result["selection_explanation"]))
 
     def test_normalized_fee_mismatch_requires_review_instead_of_claiming_published_fee(self):
