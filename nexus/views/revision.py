@@ -31,8 +31,8 @@ def render():
         st.write(f"**Usuario:** {normalizar_usuario(perfil.get('usuario_id'))}")
         st.write(f"**Capital:** {moneda_fmt(perfil['capital'], perfil['moneda'])}")
         st.write(f"**Objetivo:** {objetivo_fmt(perfil['objetivo'])} · **Horizonte:** {perfil['horizonte']} meses")
-        st.write(f"**Tolerancia hipotética a pérdidas:** {perfil['tolerancia']}%")
-        st.write(f"**Liquidez mínima simulada:** {perfil['liquidez']}%")
+        st.write(f"**Baja temporal que querés explorar:** {perfil['tolerancia']}% · No es un límite garantizado de pérdida.")
+        st.write(f"**Porción que querés disponible:** {perfil['liquidez']}% · Es una meta simulada, no una promesa de acceso inmediato.")
         st.button("Editar perfil", on_click=set_step, args=("perfil",))
 
     with right, st.container(border=True):
@@ -53,8 +53,8 @@ def render():
         )
         st.button("Editar escenario", on_click=set_step, args=("escenario",))
         st.caption(
-            "La casilla de confirmación registra que aceptaste la naturaleza simulada "
-            "del ejercicio; no verifica condiciones del mercado actual."
+            "La casilla solo registra que aceptaste que estas señales son supuestos manuales; "
+            "no verifica las condiciones actuales del mercado."
         )
 
     perfil_borrador = st.session_state.get("perfil_borrador") or {}
@@ -79,7 +79,8 @@ def render():
     st.divider()
     st.markdown(
         "Todo listo. Vamos a transformar estas respuestas en una distribución "
-        "ilustrativa y consultar ejemplos públicos de fondos. El catálogo externo no cambia tu escenario ni las reglas de asignación."
+        "ilustrativa y consultar opciones de inversión publicadas. Los porcentajes describen una simulación, "
+        "no equivalen a órdenes ni cambian las señales que ingresaste."
     )
     if st.button("Ejecutar evaluación →", type="primary", width="stretch"):
         resultado, auditoria, errores = evaluar(perfil, mercado)

@@ -63,7 +63,7 @@ def render():
       <article class="journey-card"><span class="card-number">03</span><h3>Revisá con calma</h3><p>Confirmá tus respuestas antes de generar la evaluación. Podés volver y editar.</p><span class="card-tag">Revisar datos</span></article>
       <article class="journey-card"><span class="card-number">04</span><h3>Entendé el resultado</h3><p>Mirá porcentajes, montos y los motivos de una distribución ilustrativa.</p><span class="card-tag">Resultado</span></article>
     </div>
-    <div class="learning-note"><b>Un espacio para aprender.</b> Esta demo usa reglas y escenarios manuales. En el resultado podés explorar ejemplos públicos de fondos, sin ejecutar inversiones. Tus datos duran esta sesión.</div>
+    <div class="learning-note"><b>Un espacio para aprender.</b> Esta demo usa reglas y escenarios manuales. En el resultado podés explorar opciones publicadas de fondos y mercado local, sin ejecutar inversiones. Tu avance se conserva durante la sesión y las evaluaciones se guardan en el historial del servidor.</div>
     """, unsafe_allow_html=True)
     with st.expander("Antes de empezar: dos conceptos útiles"):
-        st.markdown("**Tolerancia:** cuánto aceptarías ver bajar temporalmente tu capital en un ejemplo. No es un límite garantizado de pérdida.\n\n**Liquidez:** qué parte del dinero querés tener disponible con rapidez. Te mostraremos ambos conceptos en pesos o dólares al completar tu capital.")
+        st.markdown("**Tolerancia:** cuánto aceptarías ver bajar temporalmente tu capital en un ejemplo. No es un límite garantizado de pérdida.\n\n**Liquidez:** qué parte del dinero querés poder usar pronto. No garantiza acceso inmediato; los plazos dependen de cada opción. Verás ambos ejemplos en pesos o dólares al completar el capital.")

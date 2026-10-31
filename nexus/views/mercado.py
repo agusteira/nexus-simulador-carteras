@@ -55,15 +55,15 @@ def render():
     _restore_widgets()
     st.markdown('<div class="eyebrow">ESCENARIO</div>', unsafe_allow_html=True)
     st.title("¿Qué contexto querés explorar?")
-    st.markdown("No hace falta conocer el mercado. Podés partir de uno de estos ejemplos ficticios y después ajustar las señales.")
+    st.markdown("No hace falta conocer el mercado. Elegí un ejemplo ficticio o activá señales para ver cómo responde la simulación.")
     st.caption(
-        "Las señales son manuales y simuladas. No verifican ni describen el "
-        "mercado actual."
+        "Todo se ingresa manualmente: estas señales no consultan ni describen las "
+        "condiciones actuales del mercado."
     )
 
     with st.container(border=True):
         st.markdown("## Elegí un ejemplo para empezar")
-        st.caption("Opcional: cada ejemplo cambia las señales de abajo. Ninguno representa el mercado de hoy.")
+        st.caption("Opcional: cada ejemplo activa señales debajo. No es un pronóstico ni una lectura del mercado de hoy.")
         examples = st.columns(2)
         for i, (label, values) in enumerate([
             ("Sin alertas", (False, False, False)),
@@ -73,32 +73,32 @@ def render():
         ]):
             examples[i % 2].button(label, key=f"ejemplo_escenario_{i}", on_click=_apply_example, args=values, width="stretch")
     st.markdown("## Ajustá las señales del ejemplo")
-    st.caption("Podés activar más de una. Las reglas priorizan volatilidad, luego inflación y después presión cambiaria.")
+    st.caption("Podés activar varias. Si coinciden, la simulación aplica primero volatilidad, luego inflación y después presión sobre el dólar.")
     left, right = st.columns(2)
     with left, st.container(border=True):
         st.toggle(
             "Inflación elevada",
             key="escenario_inflacion",
             on_change=_sync_draft,
-            help="Supone presión inflacionaria para probar cómo responde la regla de asignación.",
+            help="Simula una suba marcada y general de los precios de bienes y servicios.",
         )
-        st.caption("Los precios de bienes y servicios suben con fuerza.")
+        st.caption("Inflación significa que, en general, los precios suben y el dinero alcanza para menos.")
         st.toggle(
             "Presión cambiaria elevada",
             key="escenario_cambio",
             on_change=_sync_draft,
-            help="Supone presión sobre el tipo de cambio dentro de esta simulación.",
+            help="Simula presión sobre el valor del peso frente al dólar; no informa el tipo de cambio actual.",
         )
-        st.caption("Hay presión sobre el valor de la moneda frente al dólar.")
+        st.caption("Presión cambiaria significa presión sobre el dólar o sobre el valor del peso frente a él.")
     with right, st.container(border=True):
         st.toggle(
             "Volatilidad elevada",
             key="escenario_volatilidad",
             on_change=_sync_draft,
-            help="Supone oscilaciones marcadas; la regla prioriza cautela en la asignación ilustrativa.",
+            help="Simula subidas y bajadas marcadas en el valor de las inversiones.",
         )
 
-        st.caption("Los valores de las inversiones suben y bajan de forma marcada.")
+        st.caption("Volatilidad describe cuánto pueden variar los precios; esta señal es un supuesto, no una medición actual.")
 
     mercado = _collect_market()
     if any(mercado[key] for key in ("inflacion_alta", "presion_cambiaria", "volatilidad_alta")):

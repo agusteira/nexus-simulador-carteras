@@ -3,6 +3,7 @@ from datetime import datetime
 from .engine import Inversor, Mercado, MotorRoboAdvisor, Perfil, Regimen
 from .matrices import version_activa
 from .portfolio import construir_cartera
+from .instrument_rules import POLICY_VERSION
 from .validation import validar_entrada
 
 
@@ -23,6 +24,8 @@ def evaluar(datos, mercado):
             "errores": [{"codigo": codigo, "mensaje": mensaje} for codigo, mensaje in errores],
             "fecha_ejecucion": datetime.now().isoformat(timespec="seconds"),
             "version_matriz": version_matriz,
+            "version_politica_instrumentos": POLICY_VERSION,
+            "revision_experta": "pendiente",
         }
         return resultado, [], errores
 
@@ -58,12 +61,15 @@ def evaluar(datos, mercado):
                 "mensaje": "El motor no produjo todos los hechos necesarios.",
             }],
             "version_matriz": version_matriz,
+            "version_politica_instrumentos": POLICY_VERSION,
+            "revision_experta": "pendiente",
         }
         return resultado, auditoria, errores
 
     perfil, regimen = perfiles[0], regimenes[0]
     try:
-        cartera = construir_cartera(perfil, regimen, datos["liquidez"], matriz)
+        cartera = construir_cartera(perfil, regimen, datos["liquidez"], matriz,
+                                    horizonte=datos["horizonte"], objetivo=datos["objetivo"], auditoria=auditoria)
         resultado = {
             "estado": "RECOMENDACION_EXITOSA",
             "moneda": datos["moneda"],
@@ -82,11 +88,15 @@ def evaluar(datos, mercado):
             "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado.",
             "fecha_ejecucion": datetime.now().isoformat(timespec="seconds"),
             "version_matriz": version_matriz,
+            "version_politica_instrumentos": POLICY_VERSION,
+            "revision_experta": "pendiente",
         }
     except ValueError as exc:
         resultado = {
             "estado": "DERIVADO_ASESOR_MANUAL",
             "errores": [{"codigo": "ERR_ASIGNACION_INVIABLE", "mensaje": str(exc)}],
             "version_matriz": version_matriz,
+            "version_politica_instrumentos": POLICY_VERSION,
+            "revision_experta": "pendiente",
         }
     return resultado, auditoria, errores

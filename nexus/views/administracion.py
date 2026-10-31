@@ -52,7 +52,8 @@ def _formulario(version, matriz):
     k = f"adm_v{version}"  # claves por versión: al guardar, el formulario se recarga
     nueva = json.loads(json.dumps(matriz))
     with st.form(f"{k}_form"):
-        st.markdown("## Umbrales de perfil (tolerancia a pérdidas, %)")
+        st.markdown("## Límites para clasificar el perfil")
+        st.caption("Estos porcentajes ayudan a ubicar las respuestas en un perfil; no predicen pérdidas ni rendimiento.")
         izq, der = st.columns(2)
         nueva["umbrales_perfil"]["conservador_tolerancia_max"] = izq.number_input(
             "Máximo para CONSERVADOR", 0, 100,
@@ -63,8 +64,8 @@ def _formulario(version, matriz):
             matriz["umbrales_perfil"]["moderado_tolerancia_max"], key=f"{k}_umb_m",
         )
 
-        st.markdown("## Carteras base por perfil (%)")
-        st.caption("Cada perfil debe sumar 100%.")
+        st.markdown("## Distribución inicial por perfil (%)")
+        st.caption("Son los porcentajes iniciales de cada grupo para la simulación. Cada perfil debe sumar 100%.")
         for columna, perfil in zip(st.columns(len(PERFILES)), PERFILES):
             with columna:
                 st.markdown(f"**{perfil_fmt(perfil)}**")
@@ -76,7 +77,7 @@ def _formulario(version, matriz):
                 st.caption(f"Suma actual guardada: {sum(matriz['carteras_base'][perfil].values())}%")
 
         st.markdown("## Topes por clase de activo (%)")
-        st.caption("Si una clase supera su tope, el excedente pasa a liquidez inmediata.")
+        st.caption("Un tope es el máximo permitido para un grupo. Si se supera, la simulación mueve el excedente a liquidez inmediata.")
         no_liquidas = [c for c in CATEGORIAS if c != "Liquidez inmediata"]
         for columna, perfil in zip(st.columns(len(PERFILES)), PERFILES):
             with columna:
@@ -90,19 +91,20 @@ def _formulario(version, matriz):
                     )
 
         st.markdown("## Reglas de ajuste por escenario")
+        st.caption("Estas reglas mueven una parte de la distribución cuando se activa una señal manual.")
         for regimen in REGIMENES_AJUSTABLES:
             ajuste = matriz["ajustes_regimen"][regimen]
-            st.markdown(f"**{escenario_fmt(regimen)}** (`{regimen}`)")
+            st.markdown(f"**{escenario_fmt(regimen)}**")
             c1, c2, c3, c4 = st.columns([1, 2, 2, 1])
             nueva["ajustes_regimen"][regimen] = {
                 "activo": c1.checkbox("Activa", ajuste.get("activo", True), key=f"{k}_aj_{regimen}_act"),
-                "desde": c2.selectbox("Mover desde", CATEGORIAS, CATEGORIAS.index(ajuste["desde"]), key=f"{k}_aj_{regimen}_desde"),
-                "hacia": c3.selectbox("Hacia", CATEGORIAS, CATEGORIAS.index(ajuste["hacia"]), key=f"{k}_aj_{regimen}_hacia"),
-                "puntos": c4.number_input("Puntos máx.", 0, 100, ajuste["puntos"], key=f"{k}_aj_{regimen}_pts"),
+                "desde": c2.selectbox("Categoría que reduce", CATEGORIAS, CATEGORIAS.index(ajuste["desde"]), key=f"{k}_aj_{regimen}_desde"),
+                "hacia": c3.selectbox("Categoría que aumenta", CATEGORIAS, CATEGORIAS.index(ajuste["hacia"]), key=f"{k}_aj_{regimen}_hacia"),
+                "puntos": c4.number_input("Máximo a mover (%)", 0, 100, ajuste["puntos"], key=f"{k}_aj_{regimen}_pts"),
             }
 
-        st.markdown("## Prioridad entre escenarios")
-        st.caption("Si se activan varias señales, gana la de mayor prioridad.")
+        st.markdown("## Orden para aplicar las señales")
+        st.caption("Si coinciden varias señales, se aplica primero la que aparece más arriba en esta lista.")
         prioridad = []
         for posicion, (columna, actual) in enumerate(zip(st.columns(3), matriz["prioridad_regimen"]), start=1):
             prioridad.append(columna.selectbox(
@@ -134,6 +136,7 @@ def _formulario(version, matriz):
 
 def _historial(activa):
     st.markdown("## Historial de versiones")
+    st.caption("Cada fila guarda quién cambió las reglas, cuándo y desde qué versión. Restaurar una versión crea otra nueva; no modifica evaluaciones anteriores.")
     versiones = listar_versiones()
     st.dataframe(
         [
@@ -153,7 +156,7 @@ def _historial(activa):
     numeros = [v["version"] for v in versiones]
     elegida = st.selectbox("Ver detalle de la versión", numeros, key="admin_version_detalle")
     detalle = next(v for v in versiones if v["version"] == elegida)
-    with st.expander(f"Matriz de la versión {elegida} (JSON)"):
+    with st.expander(f"Ver reglas de la versión {elegida} (datos JSON)"):
         st.json(detalle["matriz"])
     if elegida != activa:
         autor = st.text_input("Responsable de la restauración", key="admin_restaurar_autor")
@@ -170,11 +173,11 @@ def _historial(activa):
 
 def render():
     st.markdown('<div class="eyebrow">ADMINISTRACIÓN</div>', unsafe_allow_html=True)
-    st.title("Matrices de decisión")
+    st.title("Reglas de la simulación")
     st.markdown(
-        "Ajustá umbrales, carteras base, topes por clase de activo y reglas de ajuste "
-        "sin redesplegar. Cada cambio crea una versión nueva; las evaluaciones "
-        "registran qué versión usaron."
+        "Acá se editan las reglas de prueba de la simulación: cómo se clasifican las respuestas, "
+        "los porcentajes iniciales, los máximos por grupo y el orden de las señales. "
+        "Cada cambio crea una versión nueva y afecta las evaluaciones futuras; las anteriores conservan la versión que usaron."
     )
     if not _acceso_permitido():
         return
@@ -183,7 +186,7 @@ def render():
         st.success(mensaje)
 
     version, matriz = version_activa()
-    st.info(f"Versión activa: **v{version}**. Las próximas evaluaciones la van a usar.")
+    st.info(f"Reglas activas: **v{version}**. Las evaluaciones nuevas usarán esta versión; las anteriores conservan las reglas que aplicaron.")
     _formulario(version, matriz)
     _historial(version)
     st.button("Volver al inicio", key="admin_volver", on_click=set_step, args=("inicio",))

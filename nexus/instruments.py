@@ -1,13 +1,38 @@
 """Explainable examples, kept separate from the deterministic allocation engine."""
 
 from copy import deepcopy
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import hashlib
 import json
 import math
 import unicodedata
+from time import monotonic
 
 from .market_data import ArgentinaDatosClient, MarketDataError, MAX_DATA_AGE_DAYS, valid_data_date
+
+
+class _ResearchProviders:
+    """Route by provider-supported identity, never by a preferred investment."""
+
+    def __init__(self, *providers):
+        self.providers = providers
+
+    def _for(self, record):
+        return next((provider for provider in self.providers if provider.supports(record)), None)
+
+    def supports(self, record):
+        return self._for(record) is not None
+
+    def source_key(self, record):
+        provider = self._for(record)
+        return provider.source_key(record) if provider else None
+
+    def research(self, record, **kwargs):
+        provider = self._for(record)
+        if provider is None:
+            raise MarketDataError("No hay un proveedor habilitado para investigar este instrumento.")
+        return provider.research(record, **kwargs)
 
 
 def _text(value):
@@ -162,11 +187,65 @@ def build_examples(result, snapshot, catalogs, *, errors=None, today=None):
             "advertencia": "Ejemplos para investigar, no una orden ni una recomendación personalizada. No se calculan cantidades ni rendimientos futuros."}
 
 
-def query_examples(result, snapshot, *, refresh=False, client=None, today=None):
-    client = client or ArgentinaDatosClient()
+def query_examples(result, snapshot, *, refresh=False, client=None, today=None,
+                   provider=None, store=None, limits=None, market_client=None):
+    # An explicitly injected legacy client remains an offline boundary. The
+    # default live path discovers funds and local securities independently.
+    catalog_started = monotonic()
+    live_sources = client is None
+    if not live_sources and provider is None:
+        provider = False
+    if client is None:
+        from .cafci import CAFCIClient, CAFCIReferenceProvider
+        from .byma_public import BYMAPublicClient, BYMAPublicReferenceProvider
+        from .instrument_providers import ReferenceProvider
+        client = CAFCIClient()
+        if market_client is None:
+            market_client = BYMAPublicClient()
+        if provider is None:
+            provider = _ResearchProviders(CAFCIReferenceProvider(), BYMAPublicReferenceProvider(), ReferenceProvider())
     catalogs, errors = [], []
-    try:
-        catalogs.append(client.fund_catalog(refresh=refresh, today=today))
-    except MarketDataError as exc:
-        errors.append(str(exc))
-    return build_examples(result, snapshot, catalogs, errors=errors, today=today)
+    jobs = [("FCI", client.fund_catalog)]
+    if market_client is not None and market_client is not False:
+        jobs.append(("BYMADATA", market_client.instrument_catalog))
+    with ThreadPoolExecutor(max_workers=len(jobs)) as executor:
+        pending = [(name, executor.submit(method, refresh=refresh, today=today)) for name, method in jobs]
+        # Source order is deterministic, even if HTTP completion order changes.
+        for name, future in pending:
+            try:
+                source = future.result()
+                if not isinstance(source, dict):
+                    raise MarketDataError("La fuente no entregó un catálogo válido.")
+                catalogs.append(source)
+                errors.extend(f"{name}: {message}" for message in source.get("source_errors", []))
+            except MarketDataError as exc:
+                errors.append(str(exc) if len(jobs) == 1 and not live_sources else f"{name}: {exc}")
+    catalog_seconds = monotonic() - catalog_started
+    examples = build_examples(result, snapshot, catalogs, errors=errors, today=today)
+    from .instrument_research import research_instruments
+    examples["investigacion"] = research_instruments(
+        result, snapshot, catalogs, refresh=refresh, today=today,
+        provider=provider, store=store, limits=limits,
+    )
+    examples["investigacion"]["search"]["errors"] = list(errors) + examples["investigacion"]["search"].get("errors", [])
+    examples["investigacion"]["search"]["catalog_load_seconds"] = catalog_seconds
+    examples["investigacion"]["search"]["catalog_source_clients"] = len(jobs)
+    examples["investigacion"]["search"]["catalog_limits"] = {
+        "max_http_requests": 6 if live_sources else len(jobs),
+        "timeout_per_request_seconds": 8,
+        "note": "Catálogos: CAFCI JSON y planilla diaria; BYMADATA hasta dos páginas por panel. Las consultas de fichas tienen un presupuesto separado.",
+    }
+    examples["investigacion"]["source_coverage"] = [
+        {"source": source.get("fuente"), "url": source.get("url"),
+         "published_at": source.get("fecha_publicacion"),
+         "candidate_count": len(source.get("normalized_records", [])) + len(source.get("fondos", [])),
+         "classes": sorted({record.get("instrument_type") for record in source.get("normalized_records", [])
+                             if isinstance(record, dict) and isinstance(record.get("instrument_type"), str)}) or (["FCI"] if source.get("fondos") else []),
+         "detail": source.get("source_coverage"),
+         "daily_matches": source.get("daily_match_count"),
+         "daily_source": source.get("daily_source")}
+        for source in catalogs
+    ]
+    examples["criterio_orden"] = "El motor compara candidatos del mercado argentino por evidencia, restricciones y factores publicados; no prioriza nombres ni rendimientos recientes. Las condiciones de una orden en un intermediario se verifican por separado."
+    examples["advertencia"] = "Selección del simulador con fuentes públicas y política provisional; la disponibilidad, el precio final y los costos de operar se confirman con el intermediario."
+    return examples

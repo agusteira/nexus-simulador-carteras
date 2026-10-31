@@ -1,5 +1,5 @@
 {
-  "proposito": "Casos ficticios para revisión docente o de asesor. No constituyen validación financiera.",
+  "proposito": "Casos ficticios con matriz v1 y política educativa argentina-4; revisión experta pendiente.",
   "aprobacion_experta": {
     "estado": "pendiente",
     "revisor": null,
@@ -57,7 +57,9 @@
               "motivo": "No se marcaron alertas en los indicadores de esta demo."
             }
           ],
-          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado."
+          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado.",
+          "version_politica_instrumentos": "argentina-4",
+          "revision_experta": "pendiente"
         },
         "auditoria": [
           {
@@ -125,7 +127,9 @@
               "motivo": "Se identificó un escenario marcado por inflación elevada."
             }
           ],
-          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado."
+          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado.",
+          "version_politica_instrumentos": "argentina-4",
+          "revision_experta": "pendiente"
         },
         "auditoria": [
           {
@@ -171,14 +175,14 @@
           "cartera_porcentual": {
             "Renta fija inflación": 40,
             "Renta fija cambiaria": 20,
-            "Renta variable": 20,
-            "Liquidez inmediata": 20
+            "Renta variable": 10,
+            "Liquidez inmediata": 30
           },
           "montos_estimados": {
             "Renta fija inflación": 40000.0,
             "Renta fija cambiaria": 20000.0,
-            "Renta variable": 20000.0,
-            "Liquidez inmediata": 20000.0
+            "Renta variable": 10000.0,
+            "Liquidez inmediata": 30000.0
           },
           "instrumentos": [],
           "auditoria": [
@@ -191,9 +195,18 @@
               "regla": "R_MERCADO_04",
               "resultado": "ESTABLE",
               "motivo": "No se marcaron alertas en los indicadores de esta demo."
+            },
+            {
+              "regla": "R_ASIGNACION_OBJETIVO",
+              "mensaje": "Tope educativo de renta variable aplicado por objetivo de preservación: 20% a 10%.",
+              "antes": 20,
+              "despues": 10,
+              "motivo": "objetivo de preservación"
             }
           ],
-          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado."
+          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado.",
+          "version_politica_instrumentos": "argentina-4",
+          "revision_experta": "pendiente"
         },
         "auditoria": [
           {
@@ -205,6 +218,13 @@
             "regla": "R_MERCADO_04",
             "resultado": "ESTABLE",
             "motivo": "No se marcaron alertas en los indicadores de esta demo."
+          },
+          {
+            "regla": "R_ASIGNACION_OBJETIVO",
+            "mensaje": "Tope educativo de renta variable aplicado por objetivo de preservación: 20% a 10%.",
+            "antes": 20,
+            "despues": 10,
+            "motivo": "objetivo de preservación"
           }
         ],
         "errores": []
@@ -259,9 +279,18 @@
               "regla": "R_MERCADO_01",
               "resultado": "INFLACION_ALTA",
               "motivo": "Se identificó un escenario marcado por inflación elevada."
+            },
+            {
+              "regla": "R_ASIGNACION_OBJETIVO",
+              "mensaje": "Tope educativo de renta variable aplicado por objetivo de preservación: 20% a 10%.",
+              "antes": 20,
+              "despues": 10,
+              "motivo": "objetivo de preservación"
             }
           ],
-          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado."
+          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado.",
+          "version_politica_instrumentos": "argentina-4",
+          "revision_experta": "pendiente"
         },
         "auditoria": [
           {
@@ -273,6 +302,13 @@
             "regla": "R_MERCADO_01",
             "resultado": "INFLACION_ALTA",
             "motivo": "Se identificó un escenario marcado por inflación elevada."
+          },
+          {
+            "regla": "R_ASIGNACION_OBJETIVO",
+            "mensaje": "Tope educativo de renta variable aplicado por objetivo de preservación: 20% a 10%.",
+            "antes": 20,
+            "despues": 10,
+            "motivo": "objetivo de preservación"
           }
         ],
         "errores": []
@@ -307,14 +343,14 @@
           "cartera_porcentual": {
             "Renta fija inflación": 20,
             "Renta fija cambiaria": 15,
-            "Renta variable": 45,
-            "Liquidez inmediata": 20
+            "Renta variable": 10,
+            "Liquidez inmediata": 55
           },
           "montos_estimados": {
             "Renta fija inflación": 20000.0,
             "Renta fija cambiaria": 15000.0,
-            "Renta variable": 45000.0,
-            "Liquidez inmediata": 20000.0
+            "Renta variable": 10000.0,
+            "Liquidez inmediata": 55000.0
           },
           "instrumentos": [],
           "auditoria": [
@@ -327,9 +363,25 @@
               "regla": "R_PERFIL_03",
               "resultado": "AGRESIVO",
               "motivo": "La tolerancia declarada a pérdidas es superior al 10%."
+            },
+            {
+              "regla": "R_ASIGNACION_HORIZONTE",
+              "mensaje": "Tope educativo de renta variable aplicado por horizonte entre 12 y 35 meses: 45% a 20%.",
+              "antes": 45,
+              "despues": 20,
+              "motivo": "horizonte entre 12 y 35 meses"
+            },
+            {
+              "regla": "R_ASIGNACION_OBJETIVO",
+              "mensaje": "Tope educativo de renta variable aplicado por objetivo de preservación: 20% a 10%.",
+              "antes": 20,
+              "despues": 10,
+              "motivo": "objetivo de preservación"
             }
           ],
-          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado."
+          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado.",
+          "version_politica_instrumentos": "argentina-4",
+          "revision_experta": "pendiente"
         },
         "auditoria": [
           {
@@ -341,6 +393,20 @@
             "regla": "R_PERFIL_03",
             "resultado": "AGRESIVO",
             "motivo": "La tolerancia declarada a pérdidas es superior al 10%."
+          },
+          {
+            "regla": "R_ASIGNACION_HORIZONTE",
+            "mensaje": "Tope educativo de renta variable aplicado por horizonte entre 12 y 35 meses: 45% a 20%.",
+            "antes": 45,
+            "despues": 20,
+            "motivo": "horizonte entre 12 y 35 meses"
+          },
+          {
+            "regla": "R_ASIGNACION_OBJETIVO",
+            "mensaje": "Tope educativo de renta variable aplicado por objetivo de preservación: 20% a 10%.",
+            "antes": 20,
+            "despues": 10,
+            "motivo": "objetivo de preservación"
           }
         ],
         "errores": []
@@ -375,14 +441,14 @@
           "cartera_porcentual": {
             "Renta fija inflación": 30,
             "Renta fija cambiaria": 15,
-            "Renta variable": 35,
-            "Liquidez inmediata": 20
+            "Renta variable": 10,
+            "Liquidez inmediata": 45
           },
           "montos_estimados": {
             "Renta fija inflación": 30000.0,
             "Renta fija cambiaria": 15000.0,
-            "Renta variable": 35000.0,
-            "Liquidez inmediata": 20000.0
+            "Renta variable": 10000.0,
+            "Liquidez inmediata": 45000.0
           },
           "instrumentos": [],
           "auditoria": [
@@ -395,9 +461,25 @@
               "regla": "R_PERFIL_03",
               "resultado": "AGRESIVO",
               "motivo": "La tolerancia declarada a pérdidas es superior al 10%."
+            },
+            {
+              "regla": "R_ASIGNACION_HORIZONTE",
+              "mensaje": "Tope educativo de renta variable aplicado por horizonte entre 12 y 35 meses: 45% a 20%.",
+              "antes": 45,
+              "despues": 20,
+              "motivo": "horizonte entre 12 y 35 meses"
+            },
+            {
+              "regla": "R_ASIGNACION_OBJETIVO",
+              "mensaje": "Tope educativo de renta variable aplicado por objetivo de preservación: 20% a 10%.",
+              "antes": 20,
+              "despues": 10,
+              "motivo": "objetivo de preservación"
             }
           ],
-          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado."
+          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado.",
+          "version_politica_instrumentos": "argentina-4",
+          "revision_experta": "pendiente"
         },
         "auditoria": [
           {
@@ -409,6 +491,20 @@
             "regla": "R_PERFIL_03",
             "resultado": "AGRESIVO",
             "motivo": "La tolerancia declarada a pérdidas es superior al 10%."
+          },
+          {
+            "regla": "R_ASIGNACION_HORIZONTE",
+            "mensaje": "Tope educativo de renta variable aplicado por horizonte entre 12 y 35 meses: 45% a 20%.",
+            "antes": 45,
+            "despues": 20,
+            "motivo": "horizonte entre 12 y 35 meses"
+          },
+          {
+            "regla": "R_ASIGNACION_OBJETIVO",
+            "mensaje": "Tope educativo de renta variable aplicado por objetivo de preservación: 20% a 10%.",
+            "antes": 20,
+            "despues": 10,
+            "motivo": "objetivo de preservación"
           }
         ],
         "errores": []
@@ -465,7 +561,9 @@
               "motivo": "La tolerancia declarada a pérdidas es superior al 10%."
             }
           ],
-          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado."
+          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado.",
+          "version_politica_instrumentos": "argentina-4",
+          "revision_experta": "pendiente"
         },
         "auditoria": [
           {
@@ -531,9 +629,25 @@
               "regla": "R_PERFIL_03",
               "resultado": "AGRESIVO",
               "motivo": "La tolerancia declarada a pérdidas es superior al 10%."
+            },
+            {
+              "regla": "R_ASIGNACION_HORIZONTE",
+              "mensaje": "Tope educativo de renta variable aplicado por horizonte entre 12 y 35 meses: 45% a 20%.",
+              "antes": 45,
+              "despues": 20,
+              "motivo": "horizonte entre 12 y 35 meses"
+            },
+            {
+              "regla": "R_ASIGNACION_OBJETIVO",
+              "mensaje": "Tope educativo de renta variable aplicado por objetivo de preservación: 20% a 10%.",
+              "antes": 20,
+              "despues": 10,
+              "motivo": "objetivo de preservación"
             }
           ],
-          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado."
+          "advertencia": "Distribución ilustrativa, no asesoramiento financiero personalizado.",
+          "version_politica_instrumentos": "argentina-4",
+          "revision_experta": "pendiente"
         },
         "auditoria": [
           {
@@ -545,6 +659,20 @@
             "regla": "R_PERFIL_03",
             "resultado": "AGRESIVO",
             "motivo": "La tolerancia declarada a pérdidas es superior al 10%."
+          },
+          {
+            "regla": "R_ASIGNACION_HORIZONTE",
+            "mensaje": "Tope educativo de renta variable aplicado por horizonte entre 12 y 35 meses: 45% a 20%.",
+            "antes": 45,
+            "despues": 20,
+            "motivo": "horizonte entre 12 y 35 meses"
+          },
+          {
+            "regla": "R_ASIGNACION_OBJETIVO",
+            "mensaje": "Tope educativo de renta variable aplicado por objetivo de preservación: 20% a 10%.",
+            "antes": 20,
+            "despues": 10,
+            "motivo": "objetivo de preservación"
           }
         ],
         "errores": []
@@ -575,7 +703,9 @@
               "codigo": "ERR_INCONSISTENCIA_PERFIL_HORIZONTE",
               "mensaje": "Tolerancia nula a pérdidas y objetivo de crecimiento requieren revisión manual."
             }
-          ]
+          ],
+          "version_politica_instrumentos": "argentina-4",
+          "revision_experta": "pendiente"
         },
         "auditoria": [],
         "errores": [
@@ -611,7 +741,9 @@
               "codigo": "ERR_DATOS_MERCADO_NO_DISPONIBLES",
               "mensaje": "Confirmá que los datos del escenario sean vigentes antes de ejecutar."
             }
-          ]
+          ],
+          "version_politica_instrumentos": "argentina-4",
+          "revision_experta": "pendiente"
         },
         "auditoria": [],
         "errores": [
@@ -622,5 +754,6 @@
         ]
       }
     }
-  ]
+  ],
+  "politica_instrumentos": "argentina-4"
 }

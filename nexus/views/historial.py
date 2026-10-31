@@ -13,29 +13,31 @@ from ..ui.common import (
     moneda_fmt,
     objetivo_fmt,
     perfil_fmt,
+    estado_fmt,
 )
 
 
 def _etiqueta(fila):
     return (
         f"#{fila['id']} · {fecha_fmt(fila['fecha_ejecucion'])} · {fila['usuario_id']} · "
-        f"{perfil_fmt(fila['perfil_riesgo']) if fila['perfil_riesgo'] else fila['estado']}"
+        f"{perfil_fmt(fila['perfil_riesgo']) if fila['perfil_riesgo'] else estado_fmt(fila['estado'])}"
     )
 
 
 def _render_detalle(registro):
     resultado, entrada = registro["resultado"], registro["entrada"]
-    st.markdown(f"**Estado:** `{registro['estado']}` · **Usuario:** {registro['usuario_id']}")
+    st.markdown(f"**Estado:** {estado_fmt(registro['estado'])} · **Usuario:** {registro['usuario_id']}")
     st.write(
         f"**Fecha:** {fecha_fmt(registro['fecha_ejecucion'])} · "
-        f"**Versión de la matriz:** v{registro['version_matriz'] or '—'}"
+        f"**Versión de las reglas:** v{registro['version_matriz'] or '—'}"
     )
     st.write(
         f"**Capital:** {moneda_fmt(entrada.get('capital'), entrada.get('moneda', 'ARS'))} · "
         f"**Objetivo:** {objetivo_fmt(entrada.get('objetivo'))} · "
-        f"**Horizonte:** {entrada.get('horizonte')} meses · "
-        f"**Tolerancia:** {entrada.get('tolerancia')}% · **Liquidez:** {entrada.get('liquidez')}%"
+        f"**Tiempo previsto:** {entrada.get('horizonte')} meses · "
+        f"**Baja temporal explorada:** {entrada.get('tolerancia')}% · **Porción que se quiso disponible:** {entrada.get('liquidez')}%"
     )
+    st.caption("Los montos de esta evaluación se calcularon con su capital y porcentajes guardados.")
     if resultado.get("perfil_riesgo"):
         st.write(
             f"**Perfil:** {perfil_fmt(resultado['perfil_riesgo'])} · "
@@ -55,9 +57,11 @@ def _render_detalle(registro):
         )
     if registro["auditoria"]:
         st.markdown("#### Traza de ejecución")
-        st.dataframe(registro["auditoria"], width="stretch", hide_index=True)
+        st.caption("Registro de los pasos y reglas aplicados en esa evaluación.")
+        with st.expander("Ver detalle de los pasos registrados"):
+            st.dataframe(registro["auditoria"], width="stretch", hide_index=True)
     if resultado.get("errores"):
-        st.markdown("#### Errores / derivación")
+        st.markdown("#### Problemas detectados")
         st.dataframe(resultado["errores"], width="stretch", hide_index=True)
 
 
@@ -75,17 +79,29 @@ def _render_comparacion(a, b):
     ]
     for concepto, clave in (("Usuario", "usuario_id"), ("Estado", "estado"),
                             ("Perfil", "perfil_riesgo"), ("Escenario", "regimen_mercado"),
-                            ("Versión matriz", "version_matriz")):
+                            ("Versión de reglas", "version_matriz")):
+        valor_a, valor_b = a[clave], b[clave]
+        if clave == "estado":
+            valor_a, valor_b = estado_fmt(valor_a), estado_fmt(valor_b)
+        elif clave == "perfil_riesgo":
+            valor_a, valor_b = perfil_fmt(valor_a), perfil_fmt(valor_b)
+        elif clave == "regimen_mercado":
+            valor_a, valor_b = escenario_fmt(valor_a), escenario_fmt(valor_b)
+        elif clave == "version_matriz":
+            valor_a = f"v{valor_a}" if valor_a else "—"
+            valor_b = f"v{valor_b}" if valor_b else "—"
         filas.append({
             "Concepto": concepto,
-            f"#{a['id']}": str(a[clave] or "—"),
-            f"#{b['id']}": str(b[clave] or "—"),
+            f"#{a['id']}": str(valor_a or "—"),
+            f"#{b['id']}": str(valor_b or "—"),
             "Diferencia": "" if a[clave] == b[clave] else "cambia",
         })
     for campo in ("capital", "horizonte", "tolerancia", "liquidez", "objetivo", "moneda"):
         va, vb = a["entrada"].get(campo), b["entrada"].get(campo)
+        if campo == "objetivo":
+            va, vb = objetivo_fmt(va), objetivo_fmt(vb)
         filas.append({
-            "Concepto": f"Entrada · {campo}",
+            "Concepto": f"Entrada · {dict(capital='Capital', horizonte='Tiempo previsto (meses)', tolerancia='Baja temporal explorada (%)', liquidez='Porción que se quiso disponible (%)', objetivo='Objetivo', moneda='Moneda')[campo]}",
             f"#{a['id']}": str(va),
             f"#{b['id']}": str(vb),
             "Diferencia": "" if va == vb else "cambia",
@@ -112,8 +128,9 @@ def render():
     st.markdown('<div class="eyebrow">HISTORIAL</div>', unsafe_allow_html=True)
     st.title("Recomendaciones previas")
     st.markdown(
-        "Consultá las evaluaciones guardadas por identificador de usuario y fecha, "
-        "con su asignación y su traza completas, y compará dos de ellas."
+        "Buscá evaluaciones guardadas y compará sus respuestas, porcentajes y montos. "
+        "Los registros anteriores no cambian cuando editás el perfil o las reglas. "
+        "El identificador de usuario solo sirve para filtrar; no verifica identidad ni controla el acceso."
     )
 
     usuarios = listar_usuarios()
@@ -140,10 +157,10 @@ def render():
                 "ID": f["id"],
                 "Fecha": fecha_fmt(f["fecha_ejecucion"]),
                 "Usuario": f["usuario_id"],
-                "Estado": f["estado"],
+                "Estado": estado_fmt(f["estado"]),
                 "Perfil": perfil_fmt(f["perfil_riesgo"]) if f["perfil_riesgo"] else "—",
                 "Escenario": escenario_fmt(f["regimen_mercado"]) if f["regimen_mercado"] else "—",
-                "Matriz": f"v{f['version_matriz']}" if f["version_matriz"] else "—",
+                "Versión de reglas": f"v{f['version_matriz']}" if f["version_matriz"] else "—",
             }
             for f in filas
         ],
@@ -158,6 +175,7 @@ def render():
     with st.container(border=True):
         _render_detalle(registro)
         with st.expander("JSON completo guardado"):
+            st.caption("Este archivo muestra los datos guardados de la evaluación para consultar o conservar.")
             st.json(registro)
         st.download_button(
             "Descargar JSON de esta evaluación",
@@ -169,6 +187,7 @@ def render():
 
     if len(filas) >= 2:
         st.markdown("## Comparar dos evaluaciones")
+        st.caption("La comparación muestra qué cambió en las respuestas, porcentajes y montos entre ambos registros; no modifica las evaluaciones guardadas.")
         ids = list(opciones)
         col_a, col_b = st.columns(2)
         id_a = col_a.selectbox("Evaluación A", ids, index=1, format_func=opciones.get, key="historial_comparar_a")

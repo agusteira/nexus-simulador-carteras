@@ -6,6 +6,7 @@ import streamlit as st
 from ..state import is_result_stale, set_step
 from ..ui.instrument_examples import render as render_instrument_examples
 from ..ui.common import (
+    estado_fmt,
     fecha_fmt,
     moneda_fmt,
     objetivo_fmt,
@@ -76,8 +77,8 @@ def _render_snapshot_summary(resultado, snapshot):
         if perfil:
             st.write(f"**Objetivo:** {objetivo_fmt(perfil.get('objetivo'))}")
             st.write(f"**Horizonte:** {perfil.get('horizonte', 'No disponible')} meses")
-            st.write(f"**Tolerancia hipotética:** {perfil.get('tolerancia', 'No disponible')}%")
-            st.write(f"**Liquidez mínima simulada:** {perfil.get('liquidez', 'No disponible')}%")
+            st.write(f"**Baja temporal explorada:** {perfil.get('tolerancia', 'No disponible')}% · No es un límite garantizado.")
+            st.write(f"**Porción que se quiso disponible:** {perfil.get('liquidez', 'No disponible')}% · No garantiza acceso inmediato.")
             señales = [
                 nombre
                 for clave, nombre in (
@@ -99,6 +100,15 @@ def _render_success(resultado):
     moneda = resultado.get("moneda", "ARS")
     montos = resultado.get("montos_estimados", {})
     st.markdown("## Distribución del monto simulado")
+    st.caption("El porcentaje indica qué parte del capital se asigna a cada categoría; el monto es su equivalente estimado en la moneda elegida.")
+    st.markdown(
+        "**Qué significa cada categoría**\n\n"
+        "- **Renta variable:** acciones o fondos que invierten en acciones; su valor puede subir o bajar.\n"
+        "- **Renta fija inflación:** inversiones cuyo valor puede ajustarse por inflación; eso no garantiza proteger el capital.\n"
+        "- **Renta fija cambiaria:** inversiones ligadas a una referencia cambiaria; no equivalen a comprar dólares.\n"
+        "- **Liquidez inmediata:** opciones de corto plazo; el nombre no garantiza disponibilidad en cualquier momento."
+    )
+    st.info("La distribución aplica reglas de esta simulación; no analiza las perspectivas de cada empresa ni garantiza resultados.")
     with st.container(key="allocation-table"):
         rows = "".join(
             "<tr>"
@@ -129,8 +139,9 @@ def _render_success(resultado):
 def _render_interpretation(resultado):
     reglas = resultado.get("auditoria", [])
     st.markdown("## Cómo se interpretaron tus respuestas")
+    st.caption("La traza resume qué respuestas y reglas explican esta distribución. Los códigos y datos completos están en el detalle técnico.")
     if reglas:
-        for regla in reglas[:2]:
+        for regla in reglas:
             st.markdown(f"- {regla['motivo']}")
     else:
         st.info("Esta evaluación no incluye una traza de auditoría disponible.")
@@ -138,8 +149,8 @@ def _render_interpretation(resultado):
         if reglas:
             st.dataframe(reglas, width="stretch", hide_index=True)
         st.caption(
-            "La traza es parcial: registra clasificación de perfil y escenario, "
-            "pero no detalla cada ajuste porcentual de la cartera."
+            "La traza registra el perfil, el escenario y los máximos aplicados por tiempo previsto "
+            "y objetivo. También podés consultar el conjunto de reglas usado en esta evaluación."
         )
         st.json(resultado)
 
@@ -196,6 +207,8 @@ def render():
         else:
             st.button("Revisar respuestas", on_click=set_step, args=("revision",), type="primary")
         return
+
+    st.caption(f"Estado: {estado_fmt(resultado.get('estado'))}")
 
     stale = is_result_stale()
     if stale:

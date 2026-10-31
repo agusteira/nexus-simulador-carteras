@@ -13,6 +13,9 @@ PROFILE_FIELDS = {
     "objetivo": ("perfil_objetivo", "Preservacion"),
     "tolerancia": ("perfil_tolerancia", 10),
     "liquidez": ("perfil_liquidez", 20),
+    # Preserve the optional declaration in existing sessions; the current
+    # recommendation scope is Argentina and does not require a broker account.
+    "acceso": ("perfil_acceso", []),
 }
 
 
@@ -91,7 +94,7 @@ def render():
             max_chars=64,
             on_change=_sync_draft,
             placeholder="Ej.: DNI, legajo o alias",
-            help="Se guarda junto con cada evaluación para consultarla después en el Historial.",
+            help="Sirve para encontrar tus evaluaciones en el historial; no verifica tu identidad ni protege el acceso.",
         )
         capital = money_input(
             "¿Con cuánto querés simular?",
@@ -113,10 +116,11 @@ def render():
             step=1,
             key="perfil_horizonte",
             on_change=_sync_draft,
-            help="Período orientativo para el ejercicio, expresado en meses.",
+            help="Cuánto tiempo pensás mantener este dinero invertido. Es un dato para la simulación, no una fecha de rescate.",
         )
         if "horizonte" in errors:
             st.error(errors["horizonte"])
+        st.caption("Exploraremos instrumentos negociados o publicados en Argentina. No hace falta elegir un intermediario.")
     with right, st.container(border=True):
         st.markdown("## Lo que necesitás")
         objetivo = st.selectbox(
@@ -126,6 +130,11 @@ def render():
             key="perfil_objetivo",
             on_change=_sync_draft,
         )
+        st.caption({
+            "Preservacion": "Buscás evitar que el dinero pierda valor; ninguna inversión garantiza conservarlo.",
+            "Renta periodica": "Buscás ingresos periódicos si hay una opción adecuada; no están garantizados.",
+            "Crecimiento": "Buscás que el capital aumente y aceptás que su valor pueda bajar por momentos.",
+        }[objetivo])
         tolerancia = st.select_slider(
             "¿Qué caída temporal aceptarías?",
             options=[0, 5, 10, 15, 20, 30, 50],
@@ -139,7 +148,7 @@ def render():
                 "Esta combinación requiere revisión manual. Podés conservarla y "
                 "continuar; el motor informará ese resultado sin cambiar tus datos."
             )
-        st.caption("Imaginá que tu inversión baja por un tiempo. Elegí cuánto te sentirías capaz de tolerar; no es un límite de pérdida garantizado.")
+        st.caption(f"Ejemplo: {tolerancia}% significa una baja temporal de ese tamaño en la simulación. No es un tope de pérdida garantizado.")
         if "tolerancia" in errors:
             st.error(errors["tolerancia"])
         liquidez = st.slider(
@@ -149,9 +158,9 @@ def render():
             format="%d%%",
             key="perfil_liquidez",
             on_change=_sync_draft,
-            help="Parte del capital que el ejercicio intentará mantener disponible con rapidez.",
+            help="Porción del capital que querés poder usar pronto. Los plazos reales dependen de cada instrumento y entidad.",
         )
-        st.caption("Porción que querés disponible en 24/48 h dentro del ejercicio. El acceso real depende de cada instrumento.")
+        st.caption("Este porcentaje expresa una necesidad simulada; no promete disponibilidad inmediata ni acceso las 24 horas.")
         if "liquidez" in errors:
             st.error(errors["liquidez"])
 

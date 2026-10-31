@@ -28,6 +28,20 @@ ESCENARIO_LABELS = {
     "PRESION_CAMBIARIA": "Presión cambiaria elevada",
     "VOLATILIDAD_ALTA": "Volatilidad elevada",
 }
+ESTADO_LABELS = {
+    "RECOMENDACION_EXITOSA": "Simulación completada",
+    "DERIVADO_ASESOR_MANUAL": "Requiere revisión manual",
+    "SIN_ESTADO": "Estado no disponible",
+}
+DECISION_LABELS = {
+    "CONSERVAR_CANDIDATO": "Se conserva como opción compatible",
+    "PROPONER_ALTERNATIVA_COMPATIBLE": "Se propone otra opción compatible",
+    "INFORMACION_INSUFICIENTE": "Faltan datos para decidir",
+    "REQUIERE_REVISION": "Requiere revisión",
+    "EXCLUIR": "No cumple las reglas de esta simulación",
+    "EXCLUIR_CANDIDATO": "No cumple las reglas de esta simulación",
+    "AMPLIAR_BUSQUEDA": "Hace falta ampliar la búsqueda",
+}
 
 
 def moneda_fmt(valor, moneda):
@@ -57,6 +71,14 @@ def objetivo_fmt(value):
 
 def escenario_fmt(value):
     return ESCENARIO_LABELS.get(value, value or "No disponible")
+
+
+def estado_fmt(value):
+    return ESTADO_LABELS.get(value, value or "Estado no disponible")
+
+
+def decision_fmt(value):
+    return DECISION_LABELS.get(value, value or "Sin decisión disponible")
 
 
 def escenario_snapshot_fmt(escenario, regimen=None):
@@ -112,6 +134,7 @@ def render_sidebar():
                 on_click=set_step,
                 args=("auditoria",),
             )
+            st.caption("Qué respuestas y reglas se usaron en una evaluación.")
             st.button(
                 "Historial de evaluaciones",
                 key="nav_historial",
@@ -119,6 +142,7 @@ def render_sidebar():
                 on_click=set_step,
                 args=("historial",),
             )
+            st.caption("Consultá resultados anteriores y compará sus cambios.")
             st.button(
                 "Administración de matrices",
                 key="nav_administracion",
@@ -126,6 +150,7 @@ def render_sidebar():
                 on_click=set_step,
                 args=("administracion",),
             )
+            st.caption("Revisá las reglas de prueba y sus versiones.")
     return paso_actual
 
 
@@ -154,4 +179,4 @@ def render_header():
 
 
 def render_footer():
-    st.markdown('<div class="app-footer"><b>NEXUS</b><span>Prototipo académico · Escenario simulado · Datos públicos de fondos.</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="app-footer"><b>NEXUS</b><span>Prototipo académico · Escenario simulado · Datos públicos de fondos y mercado local (BYMA).</span></div>', unsafe_allow_html=True)
