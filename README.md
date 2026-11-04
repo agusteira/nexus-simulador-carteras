@@ -171,7 +171,7 @@ El historial y las revisiones usan SQLite en el servidor bajo `data/` o `NEXUS_D
 
 ## Detalles de implementación
 
-NEXUS no usa un modelo de lenguaje ni aprendizaje automático. Toda la etapa de asignación es un sistema experto con Experta (encadenamiento hacia adelante): 41 reglas `@Rule` en `MotorRoboAdvisor` que encadenan 9 niveles, donde cada nivel consume hechos derivados por el nivel anterior. Python sólo valida el formato de las entradas y arma la salida.
+NEXUS no usa un modelo de lenguaje ni aprendizaje automático. Toda la etapa de asignación es un sistema experto con Experta (encadenamiento hacia adelante): 41 reglas `@Rule` en `MotorRoboAdvisor` que encadenan 9 niveles, donde cada nivel consume hechos derivados por el nivel anterior. Python sólo valida el formato de las entradas y arma la salida. Cada regla tiene un docstring que indica qué conocimiento del dominio representa y qué requisito del brief cubre.
 
 | Nivel | Qué infiere | Reglas |
 | --- | --- | --- |
@@ -245,5 +245,15 @@ La aplicación abrirá una dirección local, normalmente `http://localhost:8501`
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+### Casos de prueba del cliente (Grupo G)
+
+Los 10 casos del brief están en `docs/casos-brief.json`. Para ejecutarlos:
+
+```bash
+python scripts/correr_casos_cliente.py
+```
+
+Usá `--caso C03` para ejecutar un solo caso y `--json` para volcar los resultados crudos en JSON. El script muestra entradas, conclusión, traza de reglas por nivel y si coincide con lo esperado.
 
 La interfaz necesita conexión para consultar fuentes públicas. Las pruebas usan fixtures y no dependen de Internet. El historial y las versiones se escriben en el disco del servidor; en hosting con disco efímero se pierden al reiniciar o redesplegar, salvo que se configure un `NEXUS_DATA_DIR` persistente.
