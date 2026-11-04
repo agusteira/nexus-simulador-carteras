@@ -1,14 +1,20 @@
 from datetime import datetime
 
-from .engine import Inversor, Mercado, MotorRoboAdvisor, Perfil, Regimen
+from .engine import Inversor, Mercado, MotorRoboAdvisor, Perfil, Regimen, hechos_de
 from .matrices import version_activa
-from .portfolio import construir_cartera
+from .portfolio import cartera_de
 from .instrument_rules import POLICY_VERSION
 from .validation import validar_entrada
 
 
 def evaluar(datos, mercado):
     """Devuelve la recomendación, la auditoría y los errores de validación."""
+    resultado, auditoria, errores, _ = evaluar_con_traza(datos, mercado)
+    return resultado, auditoria, errores
+
+
+def evaluar_con_traza(datos, mercado):
+    """Igual que evaluar() y además la traza completa de reglas disparadas (con nivel)."""
     version_matriz, matriz = version_activa()
     errores = validar_entrada(
         datos["capital"],
@@ -27,7 +33,7 @@ def evaluar(datos, mercado):
             "version_politica_instrumentos": POLICY_VERSION,
             "revision_experta": "pendiente",
         }
-        return resultado, [], errores
+        return resultado, [], errores, []
 
     motor = MotorRoboAdvisor(matriz)
     motor.reset()
@@ -52,6 +58,7 @@ def evaluar(datos, mercado):
     perfiles = [hecho["nombre"] for hecho in hechos if isinstance(hecho, Perfil)]
     regimenes = [hecho["nombre"] for hecho in hechos if isinstance(hecho, Regimen)]
     auditoria = motor.auditoria
+    traza = list(motor.traza_reglas)
 
     if not perfiles or not regimenes:
         resultado = {
@@ -64,12 +71,11 @@ def evaluar(datos, mercado):
             "version_politica_instrumentos": POLICY_VERSION,
             "revision_experta": "pendiente",
         }
-        return resultado, auditoria, errores
+        return resultado, auditoria, errores, traza
 
     perfil, regimen = perfiles[0], regimenes[0]
     try:
-        cartera = construir_cartera(perfil, regimen, datos["liquidez"], matriz,
-                                    horizonte=datos["horizonte"], objetivo=datos["objetivo"], auditoria=auditoria)
+        cartera = cartera_de(motor)
         resultado = {
             "estado": "RECOMENDACION_EXITOSA",
             "moneda": datos["moneda"],
@@ -99,4 +105,4 @@ def evaluar(datos, mercado):
             "version_politica_instrumentos": POLICY_VERSION,
             "revision_experta": "pendiente",
         }
-    return resultado, auditoria, errores
+    return resultado, auditoria, errores, traza

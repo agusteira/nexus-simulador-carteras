@@ -6,6 +6,10 @@ Primero calcula porcentajes; luego evalúa instrumentos. Puede producir una cart
 
 NEXUS no analiza balances de empresas ni valuaciones, ni intenta anticipar qué empresa rendirá mejor. Selecciona instrumentos por compatibilidad con las reglas y los datos disponibles.
 
+**Proyecto:** desarrollado por el **Grupo H** a partir del brief del **Grupo G** (cliente) — Análisis de Datos 2, UNICABA.
+**App publicada:** https://nexus-simulador-carteras-88fa6ujuvrv4mgwfxvz4h6.streamlit.app/
+**Requisito:** Python 3.11 o superior (Streamlit 1.66.1 no instala en versiones anteriores).
+
 > La revisión experta de las reglas está pendiente. NEXUS no genera órdenes ni consulta a tu intermediario. No comprueba si tu cuenta puede operar un instrumento. Los datos pueden estar demorados o incompletos.
 
 ## Qué significan estos términos
@@ -167,7 +171,21 @@ El historial y las revisiones usan SQLite en el servidor bajo `data/` o `NEXUS_D
 
 ## Detalles de implementación
 
-NEXUS no usa un modelo de lenguaje ni aprendizaje automático. La asignación usa Experta para inferir perfil y régimen, y Python aplica la matriz. La selección de instrumentos es un módulo Python determinístico separado. El detalle de hechos, reglas y prioridades se encuentra en [`nexus/engine.py`](nexus/engine.py); las reglas de instrumentos, en [`nexus/instrument_recommendations.py`](nexus/instrument_recommendations.py).
+NEXUS no usa un modelo de lenguaje ni aprendizaje automático. Toda la etapa de asignación es un sistema experto con Experta (encadenamiento hacia adelante): 41 reglas `@Rule` en `MotorRoboAdvisor` que encadenan 9 niveles, donde cada nivel consume hechos derivados por el nivel anterior. Python sólo valida el formato de las entradas y arma la salida.
+
+| Nivel | Qué infiere | Reglas |
+| --- | --- | --- |
+| 1 | Perfil, señales de mercado, tramo de horizonte, objetivo, tolerancia nula | 13 |
+| 2 | Régimen de mercado (según `prioridad_regimen`), cartera base, derivaciones a asesor manual | 7 |
+| 3 | Ajuste de la cartera por régimen | 4 |
+| 4 | Topes por clase de activo | 1 |
+| 5 | Tope de renta variable por horizonte | 3 |
+| 6 | Tope de renta variable por objetivo | 2 |
+| 7 | Liquidez mínima | 1 |
+| 8 | Validación de la cartera (aprobada o inviable) | 4 |
+| 9 | Tipo de instrumento por categoría y conclusión | 6 |
+
+Horizonte menor a 6 meses con objetivo Crecimiento deriva a revisión manual (`ERR_HORIZONTE_CORTO_CRECIMIENTO`). `nexus.service.evaluar_con_traza` devuelve además la traza ordenada de reglas disparadas con su nivel. La selección de instrumentos es un módulo Python determinístico separado. El detalle de hechos, reglas y prioridades se encuentra en [`nexus/engine.py`](nexus/engine.py); las reglas de instrumentos, en [`nexus/instrument_recommendations.py`](nexus/instrument_recommendations.py).
 
 Experta mantiene una memoria de trabajo de hechos tipados. Al iniciar una evaluación, el servicio reinicia el motor, declara `Inversor` y `Mercado`, y `@DefFacts` incorpora `Parametros` con los umbrales de la matriz activa. Las reglas `@Rule` cotejan esos hechos; al coincidir, pueden declarar `Perfil` o `Regimen` y agregar una entrada a la auditoría.
 
@@ -210,7 +228,7 @@ La matriz se guarda en [`config/matriz_decision.json`](config/matriz_decision.js
 
 ## Instalar, ejecutar y comprobar
 
-Desde la carpeta del proyecto, instalá las dependencias:
+Necesitás **Python 3.11 o superior**. Desde la carpeta del proyecto, instalá las dependencias:
 
 ```bash
 python -m pip install -r requirements.txt

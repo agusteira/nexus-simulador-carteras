@@ -1,3 +1,6 @@
+from .engine import derivaciones_de_coherencia
+
+
 def validar_entrada(
     capital, horizonte, objetivo, tolerancia, liquidez, mercado_actualizado
 ):
@@ -15,9 +18,6 @@ def validar_entrada(
             "ERR_DATOS_MERCADO_NO_DISPONIBLES",
             "Confirmá que los datos del escenario sean vigentes antes de ejecutar.",
         ))
-    if tolerancia == 0 and objetivo == "Crecimiento":
-        errores.append((
-            "ERR_INCONSISTENCIA_PERFIL_HORIZONTE",
-            "Tolerancia nula a pérdidas y objetivo de crecimiento requieren revisión manual.",
-        ))
+    # Las incoherencias entre datos se infieren con reglas del motor (nivel 2).
+    errores.extend(derivaciones_de_coherencia(tolerancia, horizonte, objetivo))
     return errores
